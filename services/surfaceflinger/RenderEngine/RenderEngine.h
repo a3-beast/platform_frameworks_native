@@ -29,6 +29,10 @@
 #include <gui/SurfaceControl.h>
 #include <math/mat4.h>
 
+#ifdef MTK_SF_DEBUG_SUPPORT
+#include "DisplayDevice.h"
+#endif
+
 #define EGL_NO_CONFIG ((EGLConfig)0)
 
 struct ANativeWindowBuffer;
@@ -113,6 +117,7 @@ public:
     virtual void setupFillWithColor(float r, float g, float b, float a) = 0;
 
     virtual void setupColorTransform(const mat4& /* colorTransform */) = 0;
+    virtual void setSaturationMatrix(const mat4& /* saturationMatrix */) = 0;
 
     virtual void disableTexturing() = 0;
     virtual void disableBlending() = 0;
@@ -129,6 +134,15 @@ public:
     // queries
     virtual size_t getMaxTextureSize() const = 0;
     virtual size_t getMaxViewportDims() const = 0;
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+public:
+    // draw debugging line to the given DisplayDevice
+    void drawDebugLine(const sp<const DisplayDevice>& hw,
+            uint32_t color = 0xFFFFFFFF, uint32_t steps = 32) const;
+
+    const char* GetEGLVendorName();
+#endif
 };
 
 class BindNativeBufferAsFramebuffer {
@@ -227,6 +241,7 @@ public:
     void checkErrors() const override;
 
     void setupColorTransform(const mat4& /* colorTransform */) override {}
+    void setSaturationMatrix(const mat4& /* saturationMatrix */) override {}
 
     // internal to RenderEngine
     EGLDisplay getEGLDisplay() const;

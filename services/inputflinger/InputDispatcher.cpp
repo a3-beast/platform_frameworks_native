@@ -20,28 +20,28 @@
 //#define LOG_NDEBUG 0
 
 // Log detailed debug messages about each inbound event notification to the dispatcher.
-#define DEBUG_INBOUND_EVENT_DETAILS 0
+#define DEBUG_INBOUND_EVENT_DETAILS 1
 
 // Log detailed debug messages about each outbound event processed by the dispatcher.
-#define DEBUG_OUTBOUND_EVENT_DETAILS 0
+#define DEBUG_OUTBOUND_EVENT_DETAILS 1
 
 // Log debug messages about the dispatch cycle.
-#define DEBUG_DISPATCH_CYCLE 0
+#define DEBUG_DISPATCH_CYCLE 1
 
 // Log debug messages about registrations.
-#define DEBUG_REGISTRATION 0
+#define DEBUG_REGISTRATION 1
 
 // Log debug messages about input event injection.
-#define DEBUG_INJECTION 0
+#define DEBUG_INJECTION 1
 
 // Log debug messages about input focus tracking.
-#define DEBUG_FOCUS 0
+#define DEBUG_FOCUS 1
 
 // Log debug messages about the app switch latency optimization.
-#define DEBUG_APP_SWITCH 0
+#define DEBUG_APP_SWITCH 1
 
 // Log debug messages about hover events.
-#define DEBUG_HOVER 0
+#define DEBUG_HOVER 1
 
 #include "InputDispatcher.h"
 
@@ -56,13 +56,24 @@
 #include <android-base/stringprintf.h>
 #include <log/log.h>
 #include <utils/Trace.h>
+#include <cutils/properties.h>
 #include <powermanager/PowerManager.h>
 #include <ui/Region.h>
+
+/// M:PerfBoost include @{
+#include <dlfcn.h>
+/// @}
 
 #define INDENT "  "
 #define INDENT2 "    "
 #define INDENT3 "      "
 #define INDENT4 "        "
+
+/// M: Switch log by command @{
+bool gInputLogEnabled = false;
+#undef ALOGD
+#define ALOGD(...) if (gInputLogEnabled) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+/// @}
 
 using android::base::StringPrintf;
 
@@ -96,6 +107,13 @@ constexpr std::chrono::milliseconds SLOW_INTERCEPTION_THRESHOLD = 50ms;
 // Number of recent events to keep for debugging purposes.
 constexpr size_t RECENT_QUEUE_MAX_SIZE = 10;
 
+/// M:PerfBoost define @{
+#define LIB_FULL_NAME "libpowerhalwrap.so"
+
+int (*powerTouchBoost)(int) = NULL;
+
+typedef int (*boost)(int);
+/// @}
 
 static inline nsecs_t now() {
     return systemTime(SYSTEM_TIME_MONOTONIC);
@@ -245,11 +263,25 @@ InputDispatcher::InputDispatcher(const sp<InputDispatcherPolicyInterface>& polic
     mNextUnblockedEvent(NULL),
     mDispatchEnabled(false), mDispatchFrozen(false), mInputFilterEnabled(false),
     mInputTargetWaitCause(INPUT_TARGET_WAIT_CAUSE_NONE) {
+    /// M:PerfBoost init @{
+    void *handle, *func;
+    /// @}
+
     mLooper = new Looper(false);
 
     mKeyRepeatState.lastKeyEntry = NULL;
 
     policy->getDispatcherConfiguration(&mConfig);
+
+    /// M:PerfBoost init @{
+    handle = dlopen(LIB_FULL_NAME, RTLD_NOW);
+
+    func = dlsym(handle, "PowerHal_TouchBoost");
+    powerTouchBoost = reinterpret_cast<boost>(func);
+    if (powerTouchBoost == NULL) {
+        ALOGE("PowerHal_TouchBoost init fail!");
+    }
+    /// @}
 }
 
 InputDispatcher::~InputDispatcher() {
@@ -497,6 +529,23 @@ bool InputDispatcher::enqueueInboundEventLocked(EventEntry* entry) {
                 needWake = true;
             }
         }
+
+        /// M:PerfBoost enable/disable @{
+        switch (motionEntry->action) {
+            case AMOTION_EVENT_ACTION_DOWN: {
+                if (powerTouchBoost)
+                    powerTouchBoost(10000); // boost 10sec. at most
+                break;
+            }
+            case AMOTION_EVENT_ACTION_UP:
+            case AMOTION_EVENT_ACTION_CANCEL: {
+                if (powerTouchBoost)
+                    powerTouchBoost(0); // disable boost
+                break;
+            }
+        }
+        /// @}
+
         break;
     }
     }
@@ -2548,6 +2597,16 @@ void InputDispatcher::notifyMotion(const NotifyMotionArgs* args) {
                 args->pointerCoords[i].getAxisValue(AMOTION_EVENT_AXIS_TOOL_MAJOR),
                 args->pointerCoords[i].getAxisValue(AMOTION_EVENT_AXIS_TOOL_MINOR),
                 args->pointerCoords[i].getAxisValue(AMOTION_EVENT_AXIS_ORIENTATION));
+        /// M: input systrace  @{
+        if (ATRACE_ENABLED()) {
+            char buffer[50];
+            snprintf(buffer, sizeof(buffer), "notify_x : %d, notify_y : %d",
+                (int)args->pointerCoords[i].getAxisValue(AMOTION_EVENT_AXIS_X),
+                (int)args->pointerCoords[i].getAxisValue(AMOTION_EVENT_AXIS_Y));
+            ATRACE_BEGIN(buffer);
+            ATRACE_END();
+        }
+        /// @}
     }
 #endif
     if (!validateMotionEvent(args->action, args->actionButton,
@@ -3897,6 +3956,9 @@ void InputDispatcher::dump(std::string& dump) {
         dump += "\nInput Dispatcher State at time of last ANR:\n";
         dump += mLastANRState;
     }
+    /// M: Switch log by command @{
+    switchInputLog();
+    /// @}
 }
 
 void InputDispatcher::monitor() {
@@ -4624,5 +4686,21 @@ bool InputDispatcherThread::threadLoop() {
     mDispatcher->dispatchOnce();
     return true;
 }
+
+/// M: Switch log by command @{
+void InputDispatcher::switchInputLog() {
+    char buf[PROPERTY_VALUE_MAX];
+    property_get("sys.inputlog.enabled", buf, "false");
+    if (!strcmp(buf, "true")) {
+        gInputLogEnabled = true;
+        InputChannel::switchInputLog(gInputLogEnabled);
+        ALOGD("Input log is enabled");
+    } else if (!strcmp(buf, "false")) {
+        ALOGD("Input log is disabled");
+        gInputLogEnabled = false;
+        InputChannel::switchInputLog(gInputLogEnabled);
+    }
+}
+/// @}
 
 } // namespace android

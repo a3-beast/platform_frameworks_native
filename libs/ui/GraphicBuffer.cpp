@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +31,10 @@
 #include <ui/Gralloc2.h>
 #include <ui/GraphicBufferAllocator.h>
 #include <ui/GraphicBufferMapper.h>
+
+#ifdef MTK_LIBUI_DEBUG_SUPPORT
+#include <inttypes.h>
+#endif
 
 namespace android {
 
@@ -71,6 +80,12 @@ GraphicBuffer::GraphicBuffer(uint32_t inWidth, uint32_t inHeight,
 {
     mInitCheck = initWithSize(inWidth, inHeight, inFormat, inLayerCount,
             usage, std::move(requestorName));
+#ifdef MTK_LIBUI_DEBUG_SUPPORT
+#ifndef MTK_USER_BUILD
+    ALOGI("create GraphicBuffer by ANativeWindowBuffer, handle(%p) (w:%d h:%d s:%d f:%#x u:%" PRIx64 ") owner(%d)",
+          handle, width, height, stride, format, usage, mOwner);
+#endif
+#endif
 }
 
 // deprecated
@@ -81,6 +96,12 @@ GraphicBuffer::GraphicBuffer(uint32_t inWidth, uint32_t inHeight,
             inWidth, inHeight, inFormat, inLayerCount, static_cast<uint64_t>(inUsage),
             inStride)
 {
+#ifdef MTK_LIBUI_DEBUG_SUPPORT
+#ifndef MTK_USER_BUILD
+    ALOGI("create GraphicBuffer by ANativeWindowBuffer, handle(%p) (w:%d h:%d s:%d f:%#x u:%d) owner(%d)",
+          handle, width, height, stride, format, inUsage, mOwner);
+#endif
+#endif
 }
 
 GraphicBuffer::GraphicBuffer(const native_handle_t* handle,
@@ -92,6 +113,13 @@ GraphicBuffer::GraphicBuffer(const native_handle_t* handle,
 {
     mInitCheck = initWithHandle(handle, method, width, height, format,
             layerCount, usage, stride);
+
+#ifdef MTK_LIBUI_DEBUG_SUPPORT
+#ifndef MTK_USER_BUILD
+    ALOGI("create GraphicBuffer by ANativeWindowBuffer, handle(%p) (w:%d h:%d s:%d f:%#x u:%" PRIx64 ") owner(%d)",
+          handle, width, height, stride, format, usage, mOwner);
+#endif
+#endif
 }
 
 GraphicBuffer::~GraphicBuffer()
@@ -105,6 +133,12 @@ void GraphicBuffer::free_handle()
 {
     if (mOwner == ownHandle) {
         mBufferMapper.freeBuffer(handle);
+#ifdef MTK_LIBUI_DEBUG_SUPPORT
+#ifndef MTK_USER_BUILD
+        ALOGD("unregister, handle(%p) (w:%d h:%d s:%d f:%#x u:%" PRIx64 ")",
+              handle, width, height, stride, format, usage);
+#endif
+#endif
     } else if (mOwner == ownData) {
         GraphicBufferAllocator& allocator(GraphicBufferAllocator::get());
         allocator.free(handle);
@@ -468,6 +502,12 @@ status_t GraphicBuffer::unflatten(
         buffer_handle_t importedHandle;
         status_t err = mBufferMapper.importBuffer(handle, uint32_t(width), uint32_t(height),
                 uint32_t(layerCount), format, usage, uint32_t(stride), &importedHandle);
+#ifdef MTK_LIBUI_DEBUG_SUPPORT
+#ifndef MTK_USER_BUILD
+        ALOGD("register, handle(%p) importBuffer(%p) (w:%d h:%d s:%d f:%#x u:%#08x)",
+              handle, importedHandle, width, height, stride, format, usage);
+#endif
+#endif
         if (err != NO_ERROR) {
             width = height = stride = format = usage_deprecated = 0;
             layerCount = 0;

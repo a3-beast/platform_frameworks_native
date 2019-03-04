@@ -355,7 +355,7 @@ public:
         data.writeUint32(height);
         data.writeInt32(static_cast<int32_t>(format));
         data.writeUint64(usage);
-        status_t result = remote()->transact(ALLOCATE_BUFFERS, data, &reply, TF_ONE_WAY);
+        status_t result = remote()->transact(ALLOCATE_BUFFERS, data, &reply);
         if (result != NO_ERROR) {
             ALOGE("allocateBuffers failed to transact: %d", result);
         }
@@ -956,6 +956,12 @@ status_t BnGraphicBufferProducer::onTransact(
                 ALOGE("getLastQueuedBuffer failed to write buffer: %d", result);
                 return result;
             }
+#ifdef MTK_AOSP_DISPLAY_BUGFIX
+            if (fence == nullptr) {
+                ALOGE("The address of fence is a nullptr!");
+                return NO_MEMORY;
+            }
+#endif
             result = reply->write(*fence);
             if (result != NO_ERROR) {
                 ALOGE("getLastQueuedBuffer failed to write fence: %d", result);

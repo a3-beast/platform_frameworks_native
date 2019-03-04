@@ -58,6 +58,13 @@
 #include <input/Keyboard.h>
 #include <input/VirtualKeyMap.h>
 
+/// M: for input MET systrace  @{
+#include <utils/Trace.h>
+//!++
+#include <cutils/properties.h>
+//!--
+/// @}
+
 #define INDENT "  "
 #define INDENT2 "    "
 #define INDENT3 "      "
@@ -3089,8 +3096,10 @@ TouchInputMapper::TouchInputMapper(InputDevice* device) :
         InputMapper(device),
         mSource(0), mDeviceMode(DEVICE_MODE_DISABLED),
         mSurfaceWidth(-1), mSurfaceHeight(-1), mSurfaceLeft(0), mSurfaceTop(0),
-        mPhysicalWidth(-1), mPhysicalHeight(-1), mPhysicalLeft(0), mPhysicalTop(0),
         mSurfaceOrientation(DISPLAY_ORIENTATION_0) {
+//!++
+        mTouchUp =::property_get_bool("persist.touchup.log", false);
+//!--
 }
 
 TouchInputMapper::~TouchInputMapper() {
@@ -3597,11 +3606,6 @@ void TouchInputMapper::configureSurface(nsecs_t when, bool* outResetNeeded) {
                 break;
             }
 
-            mPhysicalWidth = naturalPhysicalWidth;
-            mPhysicalHeight = naturalPhysicalHeight;
-            mPhysicalLeft = naturalPhysicalLeft;
-            mPhysicalTop = naturalPhysicalTop;
-
             mSurfaceWidth = naturalLogicalWidth * naturalDeviceWidth / naturalPhysicalWidth;
             mSurfaceHeight = naturalLogicalHeight * naturalDeviceHeight / naturalPhysicalHeight;
             mSurfaceLeft = naturalPhysicalLeft * naturalLogicalWidth / naturalPhysicalWidth;
@@ -3610,11 +3614,6 @@ void TouchInputMapper::configureSurface(nsecs_t when, bool* outResetNeeded) {
             mSurfaceOrientation = mParameters.orientationAware ?
                     mViewport.orientation : DISPLAY_ORIENTATION_0;
         } else {
-            mPhysicalWidth = rawWidth;
-            mPhysicalHeight = rawHeight;
-            mPhysicalLeft = 0;
-            mPhysicalTop = 0;
-
             mSurfaceWidth = rawWidth;
             mSurfaceHeight = rawHeight;
             mSurfaceLeft = 0;
@@ -3925,10 +3924,6 @@ void TouchInputMapper::dumpSurface(std::string& dump) {
     dump += StringPrintf(INDENT3 "SurfaceHeight: %dpx\n", mSurfaceHeight);
     dump += StringPrintf(INDENT3 "SurfaceLeft: %d\n", mSurfaceLeft);
     dump += StringPrintf(INDENT3 "SurfaceTop: %d\n", mSurfaceTop);
-    dump += StringPrintf(INDENT3 "PhysicalWidth: %dpx\n", mPhysicalWidth);
-    dump += StringPrintf(INDENT3 "PhysicalHeight: %dpx\n", mPhysicalHeight);
-    dump += StringPrintf(INDENT3 "PhysicalLeft: %d\n", mPhysicalLeft);
-    dump += StringPrintf(INDENT3 "PhysicalTop: %d\n", mPhysicalTop);
     dump += StringPrintf(INDENT3 "SurfaceOrientation: %d\n", mSurfaceOrientation);
 }
 
@@ -4802,7 +4797,14 @@ void TouchInputMapper::dispatchTouches(nsecs_t when, uint32_t policyFlags) {
         // Dispatch pointer up events.
         while (!upIdBits.isEmpty()) {
             uint32_t upId = upIdBits.clearFirstMarkedBit();
-
+            /// M: for input MET systrace  @{
+            ScopedTrace _l(ATRACE_TAG_INPUT, "AppLaunch_dispatchPtr:Up");
+            //!++
+            if(mTouchUp) {
+                ALOGI("AP_PROF:AppLaunch_dispatchPtr:Up");
+            }
+            //!--
+           ///  @}
             dispatchMotion(when, policyFlags, mSource,
                     AMOTION_EVENT_ACTION_POINTER_UP, 0, 0, metaState, buttonState, 0,
                     mCurrentCookedState.deviceTimestamp,
@@ -4835,6 +4837,9 @@ void TouchInputMapper::dispatchTouches(nsecs_t when, uint32_t policyFlags) {
             if (dispatchedIdBits.count() == 1) {
                 // First pointer is going down.  Set down time.
                 mDownTime = when;
+                /// M: for input MET systrace  @{
+                ScopedTrace _l(ATRACE_TAG_INPUT, "AppLaunch_dispatchPtr:Down");
+                /// @}
             }
 
             dispatchMotion(when, policyFlags, mSource,
@@ -5133,10 +5138,10 @@ void TouchInputMapper::cookPointerData() {
             }
             break;
         case DISPLAY_ORIENTATION_180:
-            x = float(mRawPointerAxes.x.maxValue - xTransformed) * mXScale;
+            x = float(mRawPointerAxes.x.maxValue - xTransformed) * mXScale + mXTranslate;
             y = float(mRawPointerAxes.y.maxValue - yTransformed) * mYScale + mYTranslate;
-            left = float(mRawPointerAxes.x.maxValue - rawRight) * mXScale;
-            right = float(mRawPointerAxes.x.maxValue - rawLeft) * mXScale;
+            left = float(mRawPointerAxes.x.maxValue - rawRight) * mXScale + mXTranslate;
+            right = float(mRawPointerAxes.x.maxValue - rawLeft) * mXScale + mXTranslate;
             bottom = float(mRawPointerAxes.y.maxValue - rawTop) * mYScale + mYTranslate;
             top = float(mRawPointerAxes.y.maxValue - rawBottom) * mYScale + mYTranslate;
             orientation -= M_PI;
@@ -5145,10 +5150,10 @@ void TouchInputMapper::cookPointerData() {
             }
             break;
         case DISPLAY_ORIENTATION_270:
-            x = float(mRawPointerAxes.y.maxValue - yTransformed) * mYScale;
+            x = float(mRawPointerAxes.y.maxValue - yTransformed) * mYScale + mYTranslate;
             y = float(xTransformed - mRawPointerAxes.x.minValue) * mXScale + mXTranslate;
-            left = float(mRawPointerAxes.y.maxValue - rawBottom) * mYScale;
-            right = float(mRawPointerAxes.y.maxValue - rawTop) * mYScale;
+            left = float(mRawPointerAxes.y.maxValue - rawBottom) * mYScale + mYTranslate;
+            right = float(mRawPointerAxes.y.maxValue - rawTop) * mYScale + mYTranslate;
             bottom = float(rawRight - mRawPointerAxes.x.minValue) * mXScale + mXTranslate;
             top = float(rawLeft - mRawPointerAxes.x.minValue) * mXScale + mXTranslate;
             orientation += M_PI_2;
@@ -5691,6 +5696,10 @@ bool TouchInputMapper::preparePointerGestures(nsecs_t when,
         mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_X, x);
         mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_Y, y);
         mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_PRESSURE, 1.0f);
+        /// M: for input MET systrace  @{
+        mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_RELATIVE_X, deltaX);
+        mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_RELATIVE_Y, deltaY);
+        /// @}
     } else if (currentFingerCount == 0) {
         // Case 3. No fingers down and button is not pressed. (NEUTRAL)
         if (mPointerGesture.lastGestureMode != PointerGesture::NEUTRAL) {
@@ -5849,7 +5858,12 @@ bool TouchInputMapper::preparePointerGestures(nsecs_t when,
         mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_Y, y);
         mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_PRESSURE,
                 down ? 1.0f : 0.0f);
-
+       /// M: for input MET systrace  @{
+       mPointerGesture.currentGestureCoords[0].setAxisValue(
+                AMOTION_EVENT_AXIS_RELATIVE_X, deltaX);
+        mPointerGesture.currentGestureCoords[0].setAxisValue(
+                AMOTION_EVENT_AXIS_RELATIVE_Y, deltaY);
+       /// @}
         if (lastFingerCount == 0 && currentFingerCount != 0) {
             mPointerGesture.resetTap();
             mPointerGesture.tapDownTime = when;
@@ -6095,6 +6109,12 @@ bool TouchInputMapper::preparePointerGestures(nsecs_t when,
                     mPointerGesture.referenceGestureX);
             mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_Y,
                     mPointerGesture.referenceGestureY);
+            /// M: for input MET systrace  @{
+            mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_RELATIVE_X,
+                    commonDeltaX);
+            mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_RELATIVE_Y,
+                    commonDeltaY);
+            /// @}
             mPointerGesture.currentGestureCoords[0].setAxisValue(AMOTION_EVENT_AXIS_PRESSURE, 1.0f);
         } else if (mPointerGesture.currentGestureMode == PointerGesture::FREEFORM) {
             // FREEFORM mode.
@@ -6313,6 +6333,10 @@ void TouchInputMapper::dispatchPointerMouse(nsecs_t when, uint32_t policyFlags) 
         mPointerSimple.currentCoords.setAxisValue(AMOTION_EVENT_AXIS_Y, y);
         mPointerSimple.currentCoords.setAxisValue(AMOTION_EVENT_AXIS_PRESSURE,
                 hovering ? 0.0f : 1.0f);
+        /// M: for input MET systrace  @{
+        mPointerSimple.currentCoords.setAxisValue(AMOTION_EVENT_AXIS_RELATIVE_X, x);
+        mPointerSimple.currentCoords.setAxisValue(AMOTION_EVENT_AXIS_RELATIVE_Y, y);
+        /// @}
         mPointerSimple.currentProperties.id = 0;
         mPointerSimple.currentProperties.toolType =
                 mCurrentCookedState.cookedPointerData.pointerProperties[currentIndex].toolType;
@@ -6504,6 +6528,22 @@ void TouchInputMapper::dispatchMotion(nsecs_t when, uint32_t policyFlags, uint32
             mViewport.displayId, deviceTimestamp, pointerCount, pointerProperties, pointerCoords,
             xPrecision, yPrecision, downTime);
     getListener()->notifyMotion(&args);
+    /** M: MET inputreader milestone. @{ */
+    {
+        char* buff = NULL;
+
+        buff = (char*)malloc(4096);
+        if (buff) {
+            sprintf(buff, "MET_notifyMotion: %lx,%d,%x,%x",
+                (long)args.eventTime,
+                args.action,
+                (int)args.pointerCoords[0].getAxisValue(AMOTION_EVENT_AXIS_X),
+                (int)args.pointerCoords[0].getAxisValue(AMOTION_EVENT_AXIS_Y));
+            ScopedTrace _l(ATRACE_TAG_INPUT, buff);
+            free(buff);
+        }
+    }
+    /** @} */
 }
 
 bool TouchInputMapper::updateMovedPointers(const PointerProperties* inProperties,
@@ -6546,12 +6586,8 @@ void TouchInputMapper::cancelTouch(nsecs_t when) {
 }
 
 bool TouchInputMapper::isPointInsideSurface(int32_t x, int32_t y) {
-    const float scaledX = x * mXScale;
-    const float scaledY = y * mYScale;
     return x >= mRawPointerAxes.x.minValue && x <= mRawPointerAxes.x.maxValue
-            && scaledX >= mPhysicalLeft && scaledX <= mPhysicalLeft + mPhysicalWidth
-            && y >= mRawPointerAxes.y.minValue && y <= mRawPointerAxes.y.maxValue
-            && scaledY >= mPhysicalTop && scaledY <= mPhysicalTop + mPhysicalHeight;
+            && y >= mRawPointerAxes.y.minValue && y <= mRawPointerAxes.y.maxValue;
 }
 
 const TouchInputMapper::VirtualKey* TouchInputMapper::findVirtualKeyHit(

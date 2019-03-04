@@ -65,9 +65,25 @@
 #define INDENT2 "    "
 #define INDENT3 "      "
 
+/// M: touch filter call @{
+void touch_driver_event_filter(struct input_event *event);
+extern "C"
+{
+    void setTouchFilterPara(int velocity[], float w_velocity[], int phase, int pointCount);
+    void setTouchFilterLogEnable(bool enabled);
+}
+/// @}
+
 using android::base::StringPrintf;
 
 namespace android {
+
+/// M: Switch touch filter by command @{
+/* Always Enable touchfilter */
+static bool gTouchFilterEnable = true;//default ture;
+static bool gTouchFilterDefault = false; //default false
+/// @}
+
 
 static const char *WAKE_LOCK_ID = "KeyEvents";
 static const char *DEVICE_PATH = "/dev/input";
@@ -949,6 +965,30 @@ size_t EventHub::getEvents(int timeoutMillis, RawEvent* buffer, size_t bufferSiz
                         event->deviceId = deviceId;
                         event->type = iev.type;
                         event->code = iev.code;
+                        /// M: touch filter call @{//add event to touchfilter for more performance
+                        if(gTouchFilterEnable)
+                        {
+                            if(gTouchFilterDefault) {
+                                int velocity[3];
+                                float velocity_para[12];
+                                char buf[PROPERTY_VALUE_MAX] = {0};
+                                property_get("persist.sys.input.Touchfval", buf, "true");
+                                if (strcmp(buf, "true")) {
+                                    sscanf(buf, "%d %d %d %f %f %f %f %f %f %f %f %f %f %f %f", &velocity[0], &velocity[1], &velocity[2],
+                                        &velocity_para[0], &velocity_para[1], &velocity_para[2], &velocity_para[3],
+                                        &velocity_para[4], &velocity_para[5], &velocity_para[6], &velocity_para[7],
+                                        &velocity_para[8], &velocity_para[9], &velocity_para[10], &velocity_para[11]);
+                                    ALOGD("Touch filter: %d %d %d %f %f %f %f %f %f %f %f %f %f %f %f", velocity[0], velocity[1], velocity[2],
+                                        velocity_para[0], velocity_para[1], velocity_para[2], velocity_para[3],
+                                        velocity_para[4], velocity_para[5], velocity_para[6], velocity_para[7],
+                                        velocity_para[8], velocity_para[9], velocity_para[10], velocity_para[11]);
+                                    setTouchFilterPara(&velocity[0], &velocity_para[0], 3, 4);
+                                }
+                                gTouchFilterDefault = false;
+                            }
+                            touch_driver_event_filter(&iev);
+                        }
+                        /// @}
                         event->value = iev.value;
                         event += 1;
                         capacity -= 1;
@@ -1741,6 +1781,51 @@ void EventHub::dump(std::string& dump) {
 
     { // acquire lock
         AutoMutex _l(mLock);
+
+        /// M: Switch log by command @{
+        char buf[PROPERTY_VALUE_MAX];
+        bool logenabled = false;
+        memset(&buf[0], 0, PROPERTY_VALUE_MAX);
+        property_get("sys.input.TouchFilterLogEnable", buf, "false");
+        if (!strcmp(buf, "true")) {
+            logenabled = true;
+            setTouchFilterLogEnable(logenabled);
+            ALOGD("Event Hub Touch Filter log is enabled");
+        } else if (!strcmp(buf, "false")) {
+            logenabled = false;
+            setTouchFilterLogEnable(logenabled);
+            ALOGD("Event Hub Touch Filter log is disabled");
+        }
+
+        memset(&buf[0], 0, PROPERTY_VALUE_MAX);
+        property_get("sys.input.TouchFilterEnable", buf, "true");
+        if (!strcmp(buf, "true")) {
+            gTouchFilterEnable = true;
+            ALOGD("Event Hub Touch Filter is enabled");
+        } else if (!strcmp(buf, "false")) {
+            gTouchFilterEnable = false;
+            ALOGD("Event Hub Touch Filter is disabled");
+        }
+        {
+            memset(&buf[0], 0, PROPERTY_VALUE_MAX);
+            property_get("sys.input.TouchFilterParameter", buf, "true");
+            if (strcmp(buf, "true")) {
+                int velocity[3];
+                float velocity_para[12];
+                sscanf(buf, "%d %d %d %f %f %f %f %f %f %f %f %f %f %f %f", &velocity[0],
+                     &velocity[1], &velocity[2],
+                     &velocity_para[0], &velocity_para[1], &velocity_para[2], &velocity_para[3],
+                     &velocity_para[4], &velocity_para[5], &velocity_para[6], &velocity_para[7],
+                     &velocity_para[8], &velocity_para[9], &velocity_para[10], &velocity_para[11]);
+                ALOGD("Touch filter: %d %d %d %f %f %f %f %f %f %f %f %f %f %f %f", velocity[0],
+                     velocity[1], velocity[2],
+                     velocity_para[0], velocity_para[1], velocity_para[2], velocity_para[3],
+                     velocity_para[4], velocity_para[5], velocity_para[6], velocity_para[7],
+                     velocity_para[8], velocity_para[9], velocity_para[10], velocity_para[11]);
+                setTouchFilterPara(&velocity[0], &velocity_para[0], 3, 4);
+            }
+        }
+        /// @}
 
         dump += StringPrintf(INDENT "BuiltInKeyboardId: %d\n", mBuiltInKeyboardId);
 

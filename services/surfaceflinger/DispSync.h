@@ -32,6 +32,10 @@ namespace android {
 class String8;
 class FenceTime;
 class DispSyncThread;
+#ifdef MTK_VSYNC_ENHANCEMENT_SUPPORT
+class DispSyncEnhancementApi;
+class SurfaceFlinger;
+#endif
 
 // DispSync maintains a model of the periodic hardware-based vsync events of a
 // display and uses that model to execute period callbacks at specific phase
@@ -195,6 +199,59 @@ private:
     bool mIgnorePresentFences;
 
     std::unique_ptr<Callback> mZeroPhaseTracer;
+
+#ifdef MTK_VSYNC_ENHANCEMENT_SUPPORT
+public:
+    // Notify caller that it should not reset the DispSync to default value
+    bool obeyResync();
+
+    // Store the SurfaceFlinger to enable the hook of HW VSync
+    void setSurfaceFlinger(const sp<SurfaceFlinger> &sf);
+
+    // Used to change the mode and fps of VSync
+    status_t setVSyncMode(int32_t mode, int32_t fps);
+
+    // Used to get offset of APP's EventThread
+    nsecs_t getAppPhase() const;
+
+    // Used to get offset of SF's EventThread
+    nsecs_t getSfPhase() const;
+
+    // Used to notify SurfaceFlinger that it need to enable HW Vsync
+    void enableHardwareVsync();
+
+    // callback function for FpsPolicyService
+    void onSwVsyncChange(int32_t mode, int32_t fps);
+
+private:
+    // Initial DispSyncEnhancement
+    void initDispVsyncEnhancement();
+
+    // Deinit DispSyncEnhancement
+    void deinitDispVsyncEnhancement();
+
+    // Whether we have to enable HW VSync to calibrate VSync when get a new present fence
+    bool addPresentFenceEnhancementLocked(bool* res);
+
+    // Whether we have to enable HW VSync to calibrate VSync when get a new HW VSync
+    bool addResyncSampleEnhancementLocked(bool* res, nsecs_t timestamp);
+
+    // Add event listener and enable VSync tracker
+    bool addEventListenerEnhancement(status_t* res, const char* name, nsecs_t phase, Callback* callback);
+
+    // Remove event listener and disable VSync tracker
+    bool removeEventListenerEnhancement(status_t* res, Callback* callback);
+
+    // dump other debuf info
+    void dumpEnhanceInfo(String8& result) const;
+
+    // create function list for DispSyncEnhancement
+    void getDispSyncEnhancementFunctionList(struct DispSyncEnhancementFunctionList* list);
+
+    sp<SurfaceFlinger> mFlinger;
+    void* mEnhancementHandle;
+    DispSyncEnhancementApi* mEnhancement;
+#endif
 };
 
 } // namespace android

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+copyright (C) 2011 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,12 @@
  * limitations under the License.
  */
 
-#include "MockPowerAdvisor.h"
+#pragma once
 
-namespace android {
-namespace Hwc2 {
-namespace mock {
-
-// Explicit default instantiation is recommended.
-PowerAdvisor::PowerAdvisor() = default;
-PowerAdvisor::~PowerAdvisor() = default;
-
-} // namespace mock
-} // namespace Hwc2
-} // namespace android
+/* extension attributes queriable with query() */
+enum {
+    /*
+     * Returns the producer connected api.
+     */
+    NATIVE_WINDOW_QUERY_API = 100,
+};

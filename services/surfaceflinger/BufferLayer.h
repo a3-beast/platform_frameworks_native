@@ -193,6 +193,14 @@ private:
 
     bool mUpdateTexImageFailed; // This is only accessed on the main thread.
     bool mRefreshPending;
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+public:
+    void dumpBufferQueueCoreState(String8& result) const;
+    uint64_t getLastAcquireFrameNumber() const { return mConsumer->getLastAcquireFrameNumber(); }
+    uint64_t getFrameNumber() const { return mConsumer->getFrameNumber(); }
+#endif
+
 };
 
 } // namespace android

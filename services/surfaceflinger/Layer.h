@@ -72,6 +72,9 @@ namespace impl {
 class SurfaceInterceptor;
 }
 
+#ifdef MTK_DISPLAY_DEJITTER
+class DispDeJitter;
+#endif
 // ---------------------------------------------------------------------------
 
 struct CompositionInfo {
@@ -258,7 +261,7 @@ public:
     // Set a 2x2 transformation matrix on the layer. This transform
     // will be applied after parent transforms, but before any final
     // producer specified transform.
-    bool setMatrix(const layer_state_t::matrix22_t& matrix, bool allowNonRectPreservingTransforms);
+    bool setMatrix(const layer_state_t::matrix22_t& matrix);
 
     // This second set of geometry attributes are controlled by
     // setGeometryAppliesWithResize, and their default mode is to be
@@ -618,8 +621,6 @@ protected:
               : mFlinger(flinger), mLayer(layer) {}
     };
 
-    virtual void onFirstRef();
-
     friend class impl::SurfaceInterceptor;
 
     void commitTransaction(const State& stateToCommit);
@@ -808,6 +809,18 @@ private:
                                        const LayerVector::Visitor& visitor);
     LayerVector makeChildrenTraversalList(LayerVector::StateSet stateSet,
                                           const std::vector<Layer*>& layersInTree);
+
+#ifdef MTK_DISPLAY_DEJITTER
+protected:
+    DispDeJitter* mDispDeJitter;
+#endif
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+public:
+    virtual void dumpBufferQueueCoreState(String8&) const {};
+    virtual uint64_t getLastAcquireFrameNumber() const { return 0; }
+    virtual uint64_t getFrameNumber() const { return 0; }
+#endif
 };
 
 // ---------------------------------------------------------------------------

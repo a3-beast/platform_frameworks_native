@@ -7,8 +7,24 @@ cc_defaults {
         "-Wthread-safety",
         "-Wunused",
         "-Wunreachable-code",
+
+        // MTK AOSP enhancement required
+        "-DMTK_AOSP_DISPLAY_BUGFIX",
+        "-DMTK_SF_WATCHDOG_SUPPORT",
+        "-DMTK_SF_DEBUG_SUPPORT",
+        "-DMTK_VSYNC_ENHANCEMENT_SUPPORT",
+        "-DMTK_DISPLAY_DEJITTER",
+        "-DMTK_GPU_DVFS_SUPPORT",
+        "-DMTK_BOOT_PROF",
+        "-DMTK_DISABLE_COLOR_TRANSFORM_FOR_SECONDARY_DISPLAYS",
+        "-DMTK_VENDOR_LATCH_UNSIGNALED",
     ],
     cppflags: ["-std=c++1z"],
+    include_dirs: [
+        // MTK AOSP enhancement required
+        "vendor/mediatek/proprietary/hardware/libgem/inc",
+        "vendor/mediatek/proprietary/hardware/gralloc_extra/include",
+    ],
 }
 
 cc_defaults {
@@ -27,7 +43,6 @@ cc_defaults {
         "android.hardware.graphics.composer@2.1",
         "android.hardware.graphics.composer@2.2",
         "android.hardware.power@1.0",
-        "android.hardware.power@1.3",
         "libbase",
         "libbinder",
         "libbufferhubqueue",
@@ -70,7 +85,6 @@ cc_defaults {
         "android.hardware.graphics.allocator@2.0",
         "android.hardware.graphics.composer@2.1",
         "android.hardware.graphics.composer@2.2",
-        "android.hardware.power@1.3",
         "libhidlbase",
         "libhidltransport",
         "libhwbinder",
@@ -98,7 +112,6 @@ filegroup {
         "DisplayHardware/HWC2.cpp",
         "DisplayHardware/HWComposer.cpp",
         "DisplayHardware/HWComposerBufferCache.cpp",
-        "DisplayHardware/PowerAdvisor.cpp",
         "DisplayHardware/VirtualDisplaySurface.cpp",
         "DispSync.cpp",
         "Effects/Daltonizer.cpp",
@@ -131,6 +144,17 @@ filegroup {
         "SurfaceTracing.cpp",
         "TimeStats/TimeStats.cpp",
         "Transform.cpp",
+
+        // MTK AOSP enhancement required
+        "mediatek/SurfaceFlinger.cpp",
+        "mediatek/SFWatchDogAPILoader.cpp",
+        "mediatek/SFProperty.cpp",
+        "mediatek/MtkDebugAPI.cpp",
+        "mediatek/RenderEngine/RenderEngine.cpp",
+        "mediatek/DisplayDevice.cpp",
+        "mediatek/DispSyncExt.cpp",
+        "mediatek/FpsCounterLoader.cpp",
+        "mediatek/SFDebugAPILoader.cpp",
     ],
 }
 
@@ -161,7 +185,12 @@ cc_binary {
     name: "surfaceflinger",
     defaults: ["surfaceflinger_defaults"],
     init_rc: ["surfaceflinger.rc"],
-    srcs: ["main_surfaceflinger.cpp"],
+    srcs: ["main_surfaceflinger.cpp",
+
+           // MTK AOSP enhancement required
+           "mediatek/CoreDump.cpp",
+           "mediatek/GuiExtService.cpp",
+    ],
     whole_static_libs: [
         "libsigchain",
     ],
@@ -197,6 +226,18 @@ cc_binary {
         },
         lib64: {
             version_script: "version-script64.txt",
+        },
+    },
+
+    cflags: [
+        "-DMTK_DEBUGGABLE_BUILD",
+    ],
+
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-UMTK_DEBUGGABLE_BUILD",
+            ],
         },
     },
 }

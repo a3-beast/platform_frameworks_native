@@ -384,6 +384,14 @@ private:
     // A release that is pending on the receipt of a new release fence from
     // presentDisplay
     PendingRelease mPendingRelease;
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+private:
+    uint64_t mLastAcquireFrameNumber;
+public:
+    uint64_t getLastAcquireFrameNumber() const { return mLastAcquireFrameNumber; }
+    void setLastAcquireFrameNumber(uint64_t val) { mLastAcquireFrameNumber = val; }
+#endif
 };
 
 // ----------------------------------------------------------------------------

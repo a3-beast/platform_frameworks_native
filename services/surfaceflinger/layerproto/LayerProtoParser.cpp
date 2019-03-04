@@ -123,6 +123,9 @@ LayerProtoParser::Layer* LayerProtoParser::generateLayer(const LayerProto& layer
     layer->appId = layerProto.app_id();
     layer->hwcCompositionType = layerProto.hwc_composition_type();
     layer->isProtected = layerProto.is_protected();
+#ifdef MTK_SF_DEBUG_SUPPORT
+    layer->bqcoreInfo = layerProto.bqcoreinfo();
+#endif
 
     return layer;
 }
@@ -314,6 +317,10 @@ std::string LayerProtoParser::Layer::to_string() const {
     StringAppendF(&result, "      activeBuffer=%s,", activeBuffer.to_string().c_str());
     StringAppendF(&result, " queued-frames=%d, mRefreshPending=%d,", queuedFrames, refreshPending);
     StringAppendF(&result, " windowType=%d, appId=%d", windowType, appId);
+#ifdef MTK_SF_DEBUG_SUPPORT
+    result.append("\n");
+    StringAppendF(&result, "%s", bqcoreInfo.c_str());
+#endif
 
     return result;
 }

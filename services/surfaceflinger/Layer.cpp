@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2018 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,6 +63,14 @@
 
 #include <mutex>
 #include "LayerProtoHelper.h"
+
+#ifdef MTK_DISPLAY_DEJITTER
+#include <gui/mediatek/DispDeJitterHelper.h>
+#endif
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+#include "mediatek/MtkDebugAPI.h"
+#endif
 
 #define DEBUG_RESIZE 0
 
@@ -133,22 +146,11 @@ Layer::Layer(SurfaceFlinger* flinger, const sp<Client>& client, const String8& n
     CompositorTiming compositorTiming;
     flinger->getCompositorTiming(&compositorTiming);
     mFrameEventHistory.initializeCompositorTiming(compositorTiming);
-}
+    mFrameTracker.setDisplayRefreshPeriod(compositorTiming.interval);
 
-void Layer::onFirstRef() NO_THREAD_SAFETY_ANALYSIS {
-    if (!isCreatedFromMainThread()) {
-        // Grab the SF state lock during this since it's the only way to safely access HWC
-        mFlinger->mStateLock.lock();
-    }
-
-    const auto& hwc = mFlinger->getHwComposer();
-    const auto& activeConfig = hwc.getActiveConfig(HWC_DISPLAY_PRIMARY);
-    nsecs_t displayPeriod = activeConfig->getVsyncPeriod();
-    mFrameTracker.setDisplayRefreshPeriod(displayPeriod);
-
-    if (!isCreatedFromMainThread()) {
-        mFlinger->mStateLock.unlock();
-    }
+#ifdef MTK_DISPLAY_DEJITTER
+    mDispDeJitter = DispDeJitterHelper::getInstance().createDispDeJitter();
+#endif
 }
 
 Layer::~Layer() {
@@ -164,6 +166,10 @@ Layer::~Layer() {
         point->setFrameAvailable();
     }
     mFrameTracker.logAndResetStats(mName);
+
+#ifdef MTK_DISPLAY_DEJITTER
+    DispDeJitterHelper::getInstance().destroyDispDeJitter(mDispDeJitter);
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -354,26 +360,27 @@ FloatRect Layer::computeBounds(const Region& activeTransparentRegion) const {
         win.intersect(s.crop, &win);
     }
 
+    Rect bounds = win;
     const auto& p = mDrawingParent.promote();
-    FloatRect floatWin = win.toFloatRect();
-    FloatRect parentBounds = floatWin;
     if (p != nullptr) {
-        // We pass an empty Region here for reasons mirroring that of the case described in
-        // the computeScreenBounds reduceTransparentRegion=false case.
-        parentBounds = p->computeBounds(Region());
+        // Look in computeScreenBounds recursive call for explanation of
+        // why we pass false here.
+        bounds = p->computeScreenBounds(false /* reduceTransparentRegion */);
     }
 
-    Transform t = s.active.transform;
+    Transform t = getTransform();
 
-
-    if (p != nullptr || !s.finalCrop.isEmpty()) {
+    FloatRect floatWin = win.toFloatRect();
+    if (p != nullptr) {
         floatWin = t.transform(floatWin);
-        floatWin = floatWin.intersect(parentBounds);
-
-        if (!s.finalCrop.isEmpty()) {
-            floatWin = floatWin.intersect(s.finalCrop.toFloatRect());
-        }
+        floatWin = floatWin.intersect(bounds.toFloatRect());
         floatWin = t.inverse().transform(floatWin);
+#ifdef MTK_AOSP_DISPLAY_BUGFIX
+        // Although floatWin use inverse matrix to transform to original coordinate, the
+        // rect size may be larger than original size. Therefore, we have to intersect the
+        // original rect to remove redundant area.
+        floatWin = floatWin.intersect(win.toFloatRect());
+#endif
     }
 
     // subtract the transparent region and snap to the bounds
@@ -1109,6 +1116,9 @@ uint32_t Layer::doTransaction(uint32_t flags) {
 
 void Layer::commitTransaction(const State& stateToCommit) {
     mDrawingState = stateToCommit;
+#ifdef MTK_SF_DEBUG_SUPPORT
+    logTransaction(this);
+#endif
 }
 
 uint32_t Layer::getTransactionFlags(uint32_t flags) {
@@ -1263,15 +1273,7 @@ bool Layer::setColor(const half3& color) {
     return true;
 }
 
-bool Layer::setMatrix(const layer_state_t::matrix22_t& matrix,
-        bool allowNonRectPreservingTransforms) {
-    Transform t;
-    t.set(matrix.dsdx, matrix.dtdy, matrix.dtdx, matrix.dsdy);
-
-    if (!allowNonRectPreservingTransforms && !t.preserveRects()) {
-        ALOGW("Attempt to set rotation matrix without permission ACCESS_SURFACE_FLINGER ignored");
-        return false;
-    }
+bool Layer::setMatrix(const layer_state_t::matrix22_t& matrix) {
     mCurrentState.sequence++;
     mCurrentState.requested.transform.set(matrix.dsdx, matrix.dtdy, matrix.dtdx, matrix.dsdy);
     mCurrentState.modified = true;
@@ -1996,16 +1998,11 @@ void Layer::writeToProto(LayerProto* layerInfo, LayerVector::StateSet stateSet) 
     layerInfo->set_refresh_pending(isBufferLatched());
     layerInfo->set_window_type(state.type);
     layerInfo->set_app_id(state.appId);
-    layerInfo->set_curr_frame(mCurrentFrameNumber);
-
-    for (const auto& pendingState : mPendingStates) {
-        auto barrierLayer = pendingState.barrierLayer.promote();
-        if (barrierLayer != nullptr) {
-            BarrierLayerProto* barrierLayerProto = layerInfo->add_barrier_layer();
-            barrierLayerProto->set_id(barrierLayer->sequence);
-            barrierLayerProto->set_frame_number(pendingState.frameNumber);
-        }
-    }
+#ifdef MTK_SF_DEBUG_SUPPORT
+    String8 result;
+    dumpBufferQueueCoreState(result);
+    layerInfo->set_bqcoreinfo(result.c_str());
+#endif
 }
 
 void Layer::writeToProto(LayerProto* layerInfo, int32_t hwcId) {

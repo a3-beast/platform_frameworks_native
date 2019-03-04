@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,6 +45,13 @@
 #include <utils/Trace.h>
 
 #include <system/window.h>
+#ifdef MTK_LIBGUI_QUERY_EXT
+#include <mediatek/window.h>
+#endif
+
+#ifdef MTK_DISPLAY_DEJITTER
+#include <gui/mediatek/DispDeJitterHelper.h>
+#endif
 
 namespace android {
 
@@ -58,7 +70,11 @@ BufferQueueProducer::BufferQueueProducer(const sp<BufferQueueCore>& core,
     mNextCallbackTicket(0),
     mCurrentCallbackTicket(0),
     mCallbackCondition(),
-    mDequeueTimeout(-1) {}
+    mDequeueTimeout(-1) {
+#ifdef MTK_DISPLAY_DEJITTER
+    DispDeJitterHelper::getInstance();
+#endif
+    }
 
 BufferQueueProducer::~BufferQueueProducer() {}
 
@@ -381,6 +397,7 @@ status_t BufferQueueProducer::dequeueBuffer(int* outSlot, sp<android::Fence>* ou
 
     { // Autolock scope
         Mutex::Autolock lock(mCore->mMutex);
+        mCore->waitWhileAllocatingLocked();
 
         if (format == 0) {
             format = mCore->mDefaultBufferFormat;
@@ -452,6 +469,10 @@ status_t BufferQueueProducer::dequeueBuffer(int* outSlot, sp<android::Fence>* ou
         if ((buffer == NULL) ||
                 buffer->needsReallocation(width, height, format, BQ_LAYER_COUNT, usage))
         {
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+            if (mCore->debugger.mDebugLog)
+                BQ_LOGI("new GraphicBuffer needed");
+#endif
             mSlots[found].mAcquireCalled = false;
             mSlots[found].mGraphicBuffer = NULL;
             mSlots[found].mRequestBufferCalled = false;
@@ -521,6 +542,17 @@ status_t BufferQueueProducer::dequeueBuffer(int* outSlot, sp<android::Fence>* ou
                 BQ_LOGE("dequeueBuffer: createGraphicBuffer failed");
                 return error;
             }
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+            else {
+                mCore->debugger.setIonInfo(graphicBuffer);
+                if (CC_UNLIKELY((width != uint32_t(graphicBuffer->width)) ||
+                            (height != uint32_t(graphicBuffer->height)) ||
+                            (format != graphicBuffer->format) ||
+                            (usage != graphicBuffer->usage))) {
+                    BQ_LOGE("*** UNEXPECTED graphic buffer allocation result ***");
+                }
+            }
+#endif
 
             if (mCore->mIsAbandoned) {
                 mCore->mFreeSlots.insert(*outSlot);
@@ -552,10 +584,25 @@ status_t BufferQueueProducer::dequeueBuffer(int* outSlot, sp<android::Fence>* ou
         eglDestroySyncKHR(eglDisplay, eglFence);
     }
 
+#if defined(MTK_LIBGUI_DEBUG_SUPPORT) || defined(MTK_GEDKPI)
+    // for dump, buffers holded by BufferQueueDump should be updated
+    {
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+        Mutex::Autolock lock(mCore->mMutex);
+        mCore->debugger.onDequeue(mSlots[*outSlot].mGraphicBuffer, *outFence);
+#endif
+#ifdef MTK_GEDKPI
+        mCore->gedkpiDebugger.onDequeue(mSlots[*outSlot].mGraphicBuffer, *outFence);
+#endif
+    }
+    // mark android original unsafe log here
+    // no lock protection, and not important info
+#else
     BQ_LOGV("dequeueBuffer: returning slot=%d/%" PRIu64 " buf=%p flags=%#x",
             *outSlot,
             mSlots[*outSlot].mFrameNumber,
             mSlots[*outSlot].mGraphicBuffer->handle, returnFlags);
+#endif
 
     if (outBufferAge) {
         *outBufferAge = mCore->mBufferAge;
@@ -751,6 +798,13 @@ status_t BufferQueueProducer::queueBuffer(int slot,
     ATRACE_CALL();
     ATRACE_BUFFER_INDEX(slot);
 
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    // give a warning if queueBuffer() in a disconnected state
+    if (BufferQueueCore::NO_CONNECTED_API == mCore->mConnectedApi) {
+        BQ_LOGW("queueBuffer() in a disconnected state");
+    }
+#endif
+
     int64_t requestedPresentTimestamp;
     bool isAutoTimestamp;
     android_dataspace dataSpace;
@@ -841,6 +895,16 @@ status_t BufferQueueProducer::queueBuffer(int slot,
             return BAD_VALUE;
         }
 
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+        if (mCore->mQueue.size() > 1) {
+            // means consumer is slower than producer
+            BQ_LOGI("RunningBehind, queued size:%zd", mCore->mQueue.size());
+            char ___traceBuf[256];
+            snprintf(___traceBuf, sizeof(___traceBuf), "RunningBehind(q:%zd)", mCore->mQueue.size());
+            android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);
+        }
+#endif
+
         // Override UNKNOWN dataspace with consumer default
         if (dataSpace == HAL_DATASPACE_UNKNOWN) {
             dataSpace = mCore->mDefaultBufferDataSpace;
@@ -919,8 +983,23 @@ status_t BufferQueueProducer::queueBuffer(int slot,
                         mCore->mFreeBuffers.push_back(last.mSlot);
                         output->bufferReplaced = true;
                     }
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+                    BQ_LOGI("queueBuffer: slot %d is dropped, handle=%p",
+                            last.mSlot, mSlots[last.mSlot].mGraphicBuffer->handle);
+                    char ___traceBuf[256];
+                    snprintf(___traceBuf, sizeof(___traceBuf), "dropped:%d (h:%p)",
+                            last.mSlot, mSlots[last.mSlot].mGraphicBuffer->handle);
+                    android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);
+#endif
                 }
-
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+                else {
+                    BQ_LOGI("queueBuffer: slot %d is dropped", last.mSlot);
+                    char ___traceBuf[256];
+                    snprintf(___traceBuf, sizeof(___traceBuf), "dropped:%d", last.mSlot);
+                    android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);
+                }
+#endif
                 // Overwrite the droppable buffer with the incoming one
                 mCore->mQueue.editItemAt(mCore->mQueue.size() - 1) = item;
                 frameReplacedListener = mCore->mConsumerListener;
@@ -948,6 +1027,10 @@ status_t BufferQueueProducer::queueBuffer(int slot,
         callbackTicket = mNextCallbackTicket++;
 
         VALIDATE_CONSISTENCY();
+
+#ifdef MTK_DISPLAY_DEJITTER
+        DispDeJitterHelper::getInstance().markTimestamp(mSlots[slot].mGraphicBuffer);
+#endif
     } // Autolock scope
 
     // It is okay not to clear the GraphicBuffer when the consumer is SurfaceFlinger because
@@ -959,6 +1042,18 @@ status_t BufferQueueProducer::queueBuffer(int slot,
 
     // Don't send the slot number through the callback since the consumer shouldn't need it
     item.mSlot = BufferItem::INVALID_BUFFER_SLOT;
+
+#if defined(MTK_LIBGUI_DEBUG_SUPPORT) || defined(MTK_GEDKPI)
+    {
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+        Mutex::Autolock lock(mCore->mMutex);
+        mCore->debugger.onQueue(mSlots[slot].mGraphicBuffer, acquireFence);
+#endif
+#ifdef MTK_GEDKPI
+        mCore->gedkpiDebugger.onQueue(mSlots[slot].mGraphicBuffer, acquireFence);
+#endif
+    }
+#endif
 
     // Call back without the main BufferQueue lock held, but with the callback
     // lock held so we can ensure that callbacks occur in order
@@ -1013,7 +1108,11 @@ status_t BufferQueueProducer::queueBuffer(int slot,
 
 status_t BufferQueueProducer::cancelBuffer(int slot, const sp<Fence>& fence) {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    BQ_LOGD("cancelBuffer: slot %d", slot);
+#else
     BQ_LOGV("cancelBuffer: slot %d", slot);
+#endif
     Mutex::Autolock lock(mCore->mMutex);
 
     if (mCore->mIsAbandoned) {
@@ -1123,6 +1222,11 @@ int BufferQueueProducer::query(int what, int *outValue) {
         case NATIVE_WINDOW_MAX_BUFFER_COUNT:
             value = static_cast<int32_t>(mCore->mMaxBufferCount);
             break;
+#ifdef MTK_LIBGUI_QUERY_EXT
+        case NATIVE_WINDOW_QUERY_API:
+            value = static_cast<int32_t>(mCore->mConnectedApi);
+            break;
+#endif
         default:
             return BAD_VALUE;
     }
@@ -1137,8 +1241,18 @@ status_t BufferQueueProducer::connect(const sp<IProducerListener>& listener,
     ATRACE_CALL();
     Mutex::Autolock lock(mCore->mMutex);
     mConsumerName = mCore->mConsumerName;
+#if defined(MTK_LIBGUI_DEBUG_SUPPORT) || defined(MTK_GEDKPI)
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    mCore->debugger.onProducerConnect(
+            listener->asBinder(listener), api, producerControlledByApp);
+#endif
+#ifdef MTK_GEDKPI
+    mCore->gedkpiDebugger.onProducerConnect(listener->asBinder(listener), api);
+#endif
+#else
     BQ_LOGV("connect: api=%d producerControlledByApp=%s", api,
             producerControlledByApp ? "true" : "false");
+#endif
 
     if (mCore->mIsAbandoned) {
         BQ_LOGE("connect: BufferQueue has been abandoned");
@@ -1225,12 +1339,25 @@ status_t BufferQueueProducer::connect(const sp<IProducerListener>& listener,
 
 status_t BufferQueueProducer::disconnect(int api, DisconnectMode mode) {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    BQ_LOGI("disconnect(P): api %d", api);
+#else
     BQ_LOGV("disconnect: api %d", api);
+#endif
 
     int status = NO_ERROR;
     sp<IConsumerListener> listener;
     { // Autolock scope
         Mutex::Autolock lock(mCore->mMutex);
+#if defined(MTK_LIBGUI_DEBUG_SUPPORT) || defined(MTK_GEDKPI)
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+        // to reset pid of producer
+        mCore->debugger.onProducerDisconnect();
+#endif
+#ifdef MTK_GEDKPI
+        mCore->gedkpiDebugger.onProducerDisconnect();
+#endif
+#endif
 
         if (mode == DisconnectMode::AllLocal) {
             if (IPCThreadState::self()->getCallingPid() != mCore->mConnectedPid) {
@@ -1344,9 +1471,7 @@ void BufferQueueProducer::allocateBuffers(uint32_t width, uint32_t height,
                 return;
             }
 
-            // Only allocate one buffer at a time to reduce risks of overlapping an allocation from
-            // both allocateBuffers and dequeueBuffer.
-            newBufferCount = mCore->mFreeSlots.empty() ? 0 : 1;
+            newBufferCount = mCore->mFreeSlots.size();
             if (newBufferCount == 0) {
                 return;
             }
@@ -1361,7 +1486,7 @@ void BufferQueueProducer::allocateBuffers(uint32_t width, uint32_t height,
         } // Autolock scope
 
         Vector<sp<GraphicBuffer>> buffers;
-        for (size_t i = 0; i < newBufferCount; ++i) {
+        for (size_t i = 0; i <  newBufferCount; ++i) {
             sp<GraphicBuffer> graphicBuffer = new GraphicBuffer(
                     allocWidth, allocHeight, allocFormat, BQ_LAYER_COUNT,
                     allocUsage, allocName);
@@ -1376,6 +1501,11 @@ void BufferQueueProducer::allocateBuffers(uint32_t width, uint32_t height,
                 mCore->mIsAllocatingCondition.broadcast();
                 return;
             }
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+            else {
+                mCore->debugger.setIonInfo(graphicBuffer);
+            }
+#endif
             buffers.push_back(graphicBuffer);
         }
 

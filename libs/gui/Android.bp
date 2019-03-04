@@ -118,7 +118,7 @@ cc_library_shared {
         "SyncFeatures.cpp",
         "view/Surface.cpp",
         "bufferqueue/1.0/B2HProducerListener.cpp",
-        "bufferqueue/1.0/H2BGraphicBufferProducer.cpp"
+        "bufferqueue/1.0/H2BGraphicBufferProducer.cpp",
     ],
 
     shared_libs: [
@@ -140,6 +140,8 @@ cc_library_shared {
         "android.hardware.graphics.bufferqueue@1.0",
         "android.hardware.configstore@1.0",
         "android.hardware.configstore-utils",
+
+
     ],
 
     // bufferhub is not used when building libgui for vendors
@@ -181,6 +183,54 @@ cc_library_shared {
     export_include_dirs: [
         "include",
     ],
+
+    defaults: [
+        "mtk_libgui_defaults",
+    ],
 }
 
-subdirs = ["tests"]
+bootstrap_go_package {
+    name:"soong-libgui-mediatek",
+    pkgPath:"android/soong/libgui/mediatek",
+    deps:[
+        "soong-android",
+        "soong-cc",
+    ],
+    srcs:[
+        "libgui.go",
+    ],
+    pluginFor:["soong_build"],
+}
+
+mtk_libgui_defaults {
+    name: "mtk_libgui_defaults",
+    cppflags:[
+        // MTK AOSP enhancement required
+        "-DMTK_LIBGUI_DEBUG_SUPPORT",
+        "-DMTK_LIBGUI_LOG_REDUCE",
+        "-DMTK_LIBGUI_QUERY_EXT",
+        "-DMTK_AOSP_DISPLAY_BUGFIX",
+        "-DMTK_DISPLAY_DEJITTER",
+        "-DMTK_AFPSGO_FBT_GAME",
+        "-DMTK_GEDKPI",
+    ],
+    srcs:[
+        // MTK AOSP enhancement required
+        "mediatek/BufferQueueDebug.cpp",
+        "mediatek/BufferQueueMonitor.cpp",
+        "mediatek/IDumpTunnel.cpp",
+        "mediatek/DispDeJitterHelper.cpp",
+        "mediatek/MTKFrameBudgetIndicator.cpp",
+        "mediatek/GedKpiDebug.cpp",
+    ],
+    shared_libs:[
+        // MTK AOSP enhancement required
+        "libdl",
+        "libhardware",
+    ],
+    // MTK AOSP enhancement required
+    include_dirs: [
+        "vendor/mediatek/proprietary/hardware/libgem/inc",
+    ],
+
+}

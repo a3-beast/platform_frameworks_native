@@ -82,6 +82,9 @@ BufferLayerConsumer::BufferLayerConsumer(const sp<IGraphicBufferConsumer>& bq,
     memcpy(mCurrentTransformMatrix, mtxIdentity.asArray(), sizeof(mCurrentTransformMatrix));
 
     mConsumer->setConsumerUsageBits(DEFAULT_USAGE_FLAGS);
+#ifdef MTK_SF_DEBUG_SUPPORT
+    mLastAcquireFrameNumber = 0;
+#endif
 }
 
 status_t BufferLayerConsumer::setDefaultBufferSize(uint32_t w, uint32_t h) {
@@ -141,7 +144,11 @@ nsecs_t BufferLayerConsumer::computeExpectedPresent(const DispSync& dispSync) {
     // we don't need to factor that in here.  Pad a little to avoid
     // weird effects if apps might be requesting times right on the edge.
     nsecs_t extraPadding = 0;
+#ifdef MTK_VSYNC_ENHANCEMENT_SUPPORT
+    if (dispSync.getAppPhase() == 0) {
+#else
     if (SurfaceFlinger::vsyncPhaseOffsetNs == 0) {
+#endif
         extraPadding = 1000000; // 1ms (6% of 60Hz)
     }
 
@@ -215,7 +222,9 @@ status_t BufferLayerConsumer::updateTexImage(BufferRejecter* rejecter, const Dis
         // a GL-composited layer) not at all.
         err = bindTextureImageLocked();
     }
-
+#ifdef MTK_SF_DEBUG_SUPPORT
+    setLastAcquireFrameNumber(item.mFrameNumber);
+#endif
     return err;
 }
 

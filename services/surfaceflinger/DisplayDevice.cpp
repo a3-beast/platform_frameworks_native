@@ -52,6 +52,11 @@
 #include <android/hardware/configstore/1.0/ISurfaceFlingerConfigs.h>
 #include <configstore/Utils.h>
 
+#ifdef MTK_SF_DEBUG_SUPPORT
+#include <mediatek/FpsCounterLoader.h>
+#include <ui_ext/FpsCounter.h>
+#endif
+
 namespace android {
 
 // retrieve triple buffer setting from configstore
@@ -296,9 +301,18 @@ DisplayDevice::DisplayDevice(
 
     // initialize the display orientation transform.
     setProjection(DisplayState::eOrientationDefault, mViewport, mFrame);
+#ifdef MTK_SF_DEBUG_SUPPORT
+    mFps = FpsCounterLoader::getInstance().create();
+#endif
 }
 
+#ifdef MTK_SF_DEBUG_SUPPORT
+DisplayDevice::~DisplayDevice() {
+    FpsCounterLoader::getInstance().destroy(mFps);
+}
+#else
 DisplayDevice::~DisplayDevice() = default;
+#endif
 
 void DisplayDevice::disconnect(HWComposer& hwc) {
     if (mHwcDisplayId >= 0) {
@@ -366,6 +380,9 @@ status_t DisplayDevice::prepareFrame(HWComposer& hwc) {
 
 void DisplayDevice::swapBuffers(HWComposer& hwc) const {
     if (hwc.hasClientComposition(mHwcDisplayId) || hwc.hasFlipClientTargetRequest(mHwcDisplayId)) {
+#ifdef MTK_SF_DEBUG_SUPPORT
+        drawDebugLine();
+#endif
         mSurface->swapBuffers();
     }
 
@@ -374,6 +391,11 @@ void DisplayDevice::swapBuffers(HWComposer& hwc) const {
         ALOGE("[%s] failed pushing new frame to HWC: %d",
                 mDisplayName.string(), result);
     }
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+    // log display device FPS info for performace check
+    FpsCounterLoader::getInstance().update(mFps, mDisplayName, mType);
+#endif
 }
 
 void DisplayDevice::onSwapBuffersCompleted() const {
@@ -685,6 +707,9 @@ void DisplayDevice::dump(String8& result) const {
     String8 surfaceDump;
     mDisplaySurface->dumpAsString(surfaceDump);
     result.append(surfaceDump);
+#ifdef MTK_SF_DEBUG_SUPPORT
+    FpsCounterLoader::getInstance().dump(mFps, &result, "   ");
+#endif
 }
 
 // Map dataspace/intent to the best matched dataspace/colorMode/renderIntent

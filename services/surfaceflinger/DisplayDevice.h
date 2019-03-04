@@ -40,6 +40,10 @@
 
 #include <memory>
 
+#ifdef MTK_SF_DEBUG_SUPPORT
+#include <ui_ext/FpsCounter.h>
+#endif
+
 struct ANativeWindow;
 
 namespace android {
@@ -291,6 +295,13 @@ private:
     HdrCapabilities mHdrCapabilities;
     const int32_t mSupportedPerFrameMetadata;
 
+    // Whether h/w composer has BT2100_PQ and BT2100_HLG color mode with
+    // colorimetrical tone mapping or enhanced tone mapping.
+    bool mHasBT2100PQColorimetric;
+    bool mHasBT2100PQEnhance;
+    bool mHasBT2100HLGColorimetric;
+    bool mHasBT2100HLGEnhance;
+
     // Mappings from desired Dataspace/RenderIntent to the supported
     // Dataspace/ColorMode/RenderIntent.
     using ColorModeKey = uint64_t;
@@ -310,6 +321,14 @@ private:
             const ui::ColorMode mode, const ui::RenderIntent intent);
 
     std::unordered_map<ColorModeKey, ColorModeValue> mColorModes;
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+private:
+    // debugging
+    void drawDebugLine() const;
+
+    mutable FpsCounter* mFps;
+#endif
 };
 
 struct DisplayDeviceState {

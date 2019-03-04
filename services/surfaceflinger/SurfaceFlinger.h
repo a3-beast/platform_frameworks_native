@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -354,6 +359,9 @@ private:
     friend class Layer;
     friend class BufferLayer;
     friend class MonitoredProducer;
+#ifdef MTK_VSYNC_ENHANCEMENT_SUPPORT
+    friend class DispSync;
+#endif
 
     // For unit tests
     friend class TestableSurfaceFlinger;
@@ -429,7 +437,6 @@ private:
                                    const Rect& sourceCrop, float frameScale, bool childrenOnly);
     virtual status_t getDisplayStats(const sp<IBinder>& display,
             DisplayStatInfo* stats);
-    virtual status_t getDisplayViewport(const sp<IBinder>& display, Rect* outViewport);
     virtual status_t getDisplayConfigs(const sp<IBinder>& display,
             Vector<DisplayInfo>* configs);
     virtual int getActiveConfig(const sp<IBinder>& display);
@@ -538,6 +545,10 @@ private:
             sp<Layer>* outLayer);
 
     status_t createColorLayer(const sp<Client>& client, const String8& name,
+            uint32_t w, uint32_t h, uint32_t flags, sp<IBinder>* outHandle,
+            sp<Layer>* outLayer);
+
+    status_t createContainerLayer(const sp<Client>& client, const String8& name,
             uint32_t w, uint32_t h, uint32_t flags, sp<IBinder>* outHandle,
             sp<Layer>* outLayer);
 
@@ -749,7 +760,9 @@ private:
         return this->mLayerTripleBufferingDisabled;
     }
     status_t doDump(int fd, const Vector<String16>& args, bool asProto);
-
+#ifdef MTK_SF_DEBUG_SUPPORT
+    static status_t getProcessName(int pid, String8& name);
+#endif
     /* ------------------------------------------------------------------------
      * VrFlinger
      */
@@ -813,13 +826,6 @@ private:
     sp<Fence> mPreviousPresentFence = Fence::NO_FENCE;
     bool mHadClientComposition = false;
 
-    enum class BootStage {
-        BOOTLOADER,
-        BOOTANIMATION,
-        FINISHED,
-    };
-    BootStage mBootStage;
-
     struct HotplugEvent {
         hwc2_display_t display;
         HWC2::Connection connection = HWC2::Connection::Invalid;
@@ -840,6 +846,7 @@ private:
     nsecs_t mLastSwapBufferTime;
     volatile nsecs_t mDebugInTransaction;
     nsecs_t mLastTransactionTime;
+    bool mBootFinished;
     bool mForceFullDamage;
     bool mPropagateBackpressure = true;
     std::unique_ptr<SurfaceInterceptor> mInterceptor =
@@ -896,9 +903,9 @@ private:
     static bool useVrFlinger;
     std::thread::id mMainThreadId;
 
-    DisplayColorSetting mDisplayColorSetting = DisplayColorSetting::ENHANCED;
-    // Applied on Display P3 layers when the render intent is non-colorimetric.
-    mat4 mEnhancedSaturationMatrix;
+    DisplayColorSetting mDisplayColorSetting = DisplayColorSetting::MANAGED;
+    // Applied on sRGB layers when the render intent is non-colorimetric.
+    mat4 mLegacySrgbSaturationMatrix;
 
     using CreateBufferQueueFunction =
             std::function<void(sp<IGraphicBufferProducer>* /* outProducer */,
@@ -911,6 +918,37 @@ private:
     CreateNativeWindowSurfaceFunction mCreateNativeWindowSurface;
 
     SurfaceFlingerBE mBE;
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+private:
+    // used to avoid race condition between handleMessageRefresh() and dumpAllLocked()
+    mutable Mutex mDumpLock;
+
+    status_t dumpLock(bool& dumpLocked, nsecs_t& start, String8& result);
+    void dumpUnlock(bool dumpLocked, nsecs_t start);
+    void mtkDump(size_t numArgs,
+        size_t& index,
+        const Vector<String16>& args,
+        String8& result,
+        bool& dumpAll);
+#endif
+
+#ifdef MTK_VSYNC_ENHANCEMENT_SUPPORT
+private:
+    // transact MTK binder request
+    status_t onMtkTransact(uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags);
+
+    // for adjust vsync fps
+    void adjustSwVsyncPeriod(int32_t fps);
+
+    // for adjust vsync offset
+    void adjustSwVsyncOffset(nsecs_t offset);
+#endif
+
+#ifdef MTK_BOOT_PROF
+public:
+    static void bootProf(int start);
+#endif
 };
 }; // namespace android
 

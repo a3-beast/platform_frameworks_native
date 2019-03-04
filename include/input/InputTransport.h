@@ -181,6 +181,10 @@ public:
     /* Returns a new object that has a duplicate of this channel's fd. */
     sp<InputChannel> dup() const;
 
+    /// M: Switch log by command@{
+    static void switchInputLog(bool enable);
+    /// @}
+
 private:
     std::string mName;
     int mFd;

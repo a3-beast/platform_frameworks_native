@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -656,6 +661,11 @@ status_t SurfaceComposerClient::createSurfaceChecked(
         if (err == NO_ERROR) {
             *outSurface = new SurfaceControl(this, handle, gbp, true /* owned */);
         }
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+        else {
+            ALOGE("ScreenshotClient: lockNextBuffer failed: %s (%d)", strerror(-err), err);
+        }
+#endif
     }
     return err;
 }
@@ -716,10 +726,6 @@ status_t SurfaceComposerClient::getDisplayInfo(const sp<IBinder>& display,
 
     *info = configs[static_cast<size_t>(activeId)];
     return NO_ERROR;
-}
-
-status_t SurfaceComposerClient::getDisplayViewport(const sp<IBinder>& display, Rect* outViewport) {
-    return ComposerService::getComposerService()->getDisplayViewport(display, outViewport);
 }
 
 int SurfaceComposerClient::getActiveConfig(const sp<IBinder>& display) {

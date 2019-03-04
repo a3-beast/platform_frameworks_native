@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2018 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,7 +53,20 @@
 #include <stdlib.h>
 #include <mutex>
 
+#ifdef MTK_DISPLAY_DEJITTER
+#include <gui/mediatek/DispDeJitterHelper.h>
+#endif
+
 namespace android {
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+#define LAYER_ATRACE_BUFFER(x, ...)                                             \
+    if (ATRACE_ENABLED()) {                                                     \
+        char ___traceBuf[256];                                                  \
+        snprintf(___traceBuf, sizeof(___traceBuf), x, ##__VA_ARGS__);           \
+        android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);             \
+    }
+#endif
 
 BufferLayer::BufferLayer(SurfaceFlinger* flinger, const sp<Client>& client, const String8& name,
                          uint32_t w, uint32_t h, uint32_t flags)
@@ -160,7 +178,13 @@ static constexpr mat4 inverseOrientation(uint32_t transform) {
  */
 void BufferLayer::onDraw(const RenderArea& renderArea, const Region& clip,
                          bool useIdentityTransform) const {
+#ifdef MTK_SF_DEBUG_SUPPORT
+    String8 name("onDraw");
+    name.appendFormat("(%s)", mName.string());
+    ATRACE_NAME(name.string());
+#else
     ATRACE_CALL();
+#endif
 
     if (CC_UNLIKELY(getBE().compositionInfo.mBuffer == 0)) {
         // the texture has not been created yet, this Layer has
@@ -279,9 +303,20 @@ bool BufferLayer::shouldPresentNow(const DispSync& dispSync) const {
              "[%s] Timestamp %" PRId64 " seems implausible "
              "relative to expectedPresent %" PRId64,
              mName.string(), timestamp, expectedPresent);
+#ifdef MTK_SF_DEBUG_SUPPORT
+    char ___traceBuf[128];
+    snprintf(___traceBuf, sizeof(___traceBuf), " defer %s(ns)", mName.string());
+    LAYER_ATRACE_BUFFER("defer %s(ns): expexted:%" PRId64 "  timestamp:%" PRId64,
+            mName.string(), expectedPresent, timestamp);
+#endif
 
     bool isDue = timestamp < expectedPresent;
+#ifdef MTK_DISPLAY_DEJITTER
+    return DispDeJitterHelper::getInstance().shouldDelayPresent(mDispDeJitter,
+            mQueueItems[0].mGraphicBuffer, expectedPresent, isDue, isPlausible);
+#else
     return isDue || !isPlausible;
+#endif
 }
 
 void BufferLayer::setTransformHint(uint32_t orientation) const {
@@ -701,8 +736,9 @@ bool BufferLayer::isOpaque(const Layer::State& s) const {
 }
 
 void BufferLayer::onFirstRef() {
+#ifdef MTK_AOSP_DISPLAY_BUGFIX
     Layer::onFirstRef();
-
+#endif
     // Creates a custom BufferQueue for SurfaceFlingerConsumer to use
     sp<IGraphicBufferProducer> producer;
     sp<IGraphicBufferConsumer> consumer;
@@ -909,7 +945,11 @@ bool BufferLayer::latchUnsignaledBuffers() {
     std::lock_guard<std::mutex> lock(mutex);
     if (!propertyLoaded) {
         char value[PROPERTY_VALUE_MAX] = {};
+#ifdef MTK_VENDOR_LATCH_UNSIGNALED
+        property_get("vendor.debug.sf.latch_unsignaled", value, "0");
+#else
         property_get("debug.sf.latch_unsignaled", value, "0");
+#endif
         latch = atoi(value);
         propertyLoaded = true;
     }
@@ -1000,6 +1040,13 @@ bool BufferLayer::allTransactionsSignaled() {
     }
     return !matchingFramesFound || allTransactionsApplied;
 }
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+void BufferLayer::dumpBufferQueueCoreState(String8& result) const
+{
+    mConsumer->dumpState(result);
+}
+#endif
 
 } // namespace android
 

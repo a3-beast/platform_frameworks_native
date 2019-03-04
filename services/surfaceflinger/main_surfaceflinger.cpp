@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2018 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +36,11 @@
 #include <configstore/Utils.h>
 #include "GpuService.h"
 #include "SurfaceFlinger.h"
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+#include "mediatek/CoreDump.h"
+#include "mediatek/GuiExtService.h"
+#endif
 
 using namespace android;
 
@@ -71,6 +81,12 @@ static status_t startDisplayService() {
 int main(int, char**) {
     signal(SIGPIPE, SIG_IGN);
 
+#ifdef MTK_SF_DEBUG_SUPPORT
+#ifdef MTK_DEBUGGABLE_BUILD
+    directcoredump_init();
+#endif
+#endif
+
     hardware::configureRpcThreadpool(1 /* maxThreads */,
             false /* callerWillJoin */);
 
@@ -102,13 +118,17 @@ int main(int, char**) {
     // publish surface flinger
     sp<IServiceManager> sm(defaultServiceManager());
     sm->addService(String16(SurfaceFlinger::getServiceName()), flinger, false,
-                   IServiceManager::DUMP_FLAG_PRIORITY_CRITICAL | IServiceManager::DUMP_FLAG_PROTO);
+                   IServiceManager::DUMP_FLAG_PRIORITY_CRITICAL);
 
     // publish GpuService
     sp<GpuService> gpuservice = new GpuService();
     sm->addService(String16(GpuService::SERVICE_NAME), gpuservice, false);
 
     startDisplayService(); // dependency on SF getting registered above
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+    createGuiExtService();
+#endif
 
     struct sched_param param = {0};
     param.sched_priority = 2;

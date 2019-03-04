@@ -1135,6 +1135,9 @@ private:
     void traceInboundQueueLengthLocked();
     void traceOutboundQueueLengthLocked(const sp<Connection>& connection);
     void traceWaitQueueLengthLocked(const sp<Connection>& connection);
+    /// M: Switch log by command @{
+    void switchInputLog();
+    /// @}
 };
 
 /* Enqueues and dispatches input events, endlessly. */

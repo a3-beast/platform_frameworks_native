@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,6 +46,10 @@
 
 #include <android/hardware/configstore/1.0/ISurfaceFlingerConfigs.h>
 #include <configstore/Utils.h>
+
+#ifdef MTK_AFPSGO_FBT_GAME
+#include "gui/mediatek/MTKFrameBudgetIndicator.h"
+#endif
 
 namespace android {
 
@@ -119,6 +128,9 @@ void Surface::setSidebandStream(const sp<NativeHandle>& stream) {
 }
 
 void Surface::allocateBuffers() {
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    ALOGD("Surface::allocateBuffers(this=%p)", this);
+#endif
     uint32_t reqWidth = mReqWidth ? mReqWidth : mUserWidth;
     uint32_t reqHeight = mReqHeight ? mReqHeight : mUserHeight;
     mGraphicBufferProducer->allocateBuffers(reqWidth, reqHeight,
@@ -464,12 +476,8 @@ int Surface::setSwapInterval(int interval) {
     if (interval > maxSwapInterval)
         interval = maxSwapInterval;
 
-    const bool wasSwapIntervalZero = mSwapIntervalZero;
     mSwapIntervalZero = (interval == 0);
-
-    if (mSwapIntervalZero != wasSwapIntervalZero) {
-        mGraphicBufferProducer->setAsyncMode(mSwapIntervalZero);
-    }
+    mGraphicBufferProducer->setAsyncMode(mSwapIntervalZero);
 
     return NO_ERROR;
 }
@@ -477,6 +485,18 @@ int Surface::setSwapInterval(int interval) {
 int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
     ATRACE_CALL();
     ALOGV("Surface::dequeueBuffer");
+
+#ifdef MTK_AFPSGO_FBT_GAME
+    uint64_t buffID = 0;
+    uint64_t consumUsage = 0;
+    int32_t queueSF = 1;
+
+    mGraphicBufferProducer->getUniqueId(&buffID);
+    getConsumerUsage(&consumUsage);
+    if (!(consumUsage & GraphicBuffer::USAGE_HW_COMPOSER))
+        queueSF = 0;
+    notifyFbc(FBC_DEQUEUE_BEG, buffID, queueSF);
+#endif
 
     uint32_t reqWidth;
     uint32_t reqHeight;
@@ -504,6 +524,9 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
             if (gbuf != NULL) {
                 *buffer = gbuf.get();
                 *fenceFd = -1;
+#ifdef MTK_AFPSGO_FBT_GAME
+                notifyFbc(FBC_DEQUEUE_END, buffID, queueSF);
+#endif
                 return OK;
             }
         }
@@ -519,6 +542,10 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
                                                             enableFrameTimestamps ? &frameTimestamps
                                                                                   : nullptr);
     mLastDequeueDuration = systemTime() - startTime;
+
+#ifdef MTK_AFPSGO_FBT_GAME
+    notifyFbc(FBC_DEQUEUE_END, buffID, queueSF);
+#endif
 
     if (result < 0) {
         ALOGV("dequeueBuffer: IGraphicBufferProducer::dequeueBuffer"
@@ -563,7 +590,12 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
         }
     }
 
+#ifdef MTK_AOSP_DISPLAY_BUGFIX
+    // Google issue: binder transaction might be failed and get null fence
+    if (fence != NULL && fence->isValid()) {
+#else
     if (fence->isValid()) {
+#endif
         *fenceFd = fence->dup();
         if (*fenceFd == -1) {
             ALOGE("dequeueBuffer: error duping fence: %d", errno);
@@ -636,6 +668,17 @@ int Surface::lockBuffer_DEPRECATED(android_native_buffer_t* buffer __attribute__
 
 int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     ATRACE_CALL();
+#ifdef MTK_AFPSGO_FBT_GAME
+    uint64_t buffID = 0;
+    uint64_t consumUsage = 0;
+    int32_t queueSF = 1;
+
+    mGraphicBufferProducer->getUniqueId(&buffID);
+    getConsumerUsage(&consumUsage);
+    if (!(consumUsage & GraphicBuffer::USAGE_HW_COMPOSER))
+        queueSF = 0;
+    notifyFbc(FBC_QUEUE_BEG, buffID, queueSF);
+#endif
     ALOGV("Surface::queueBuffer");
     Mutex::Autolock lock(mMutex);
     int64_t timestamp;
@@ -784,6 +827,10 @@ int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     }
 
     mQueueBufferCondition.broadcast();
+
+#ifdef MTK_AFPSGO_FBT_GAME
+    notifyFbc(FBC_QUEUE_END, buffID, queueSF);
+#endif
 
     return err;
 }
@@ -1207,7 +1254,11 @@ int Surface::connect(int api, const sp<IProducerListener>& listener) {
 int Surface::connect(
         int api, const sp<IProducerListener>& listener, bool reportBufferRemoval) {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    ALOGD("Surface::connect(this=%p,api=%d)", this, api);
+#else
     ALOGV("Surface::connect");
+#endif
     Mutex::Autolock lock(mMutex);
     IGraphicBufferProducer::QueueBufferOutput output;
     mReportRemovedBuffers = reportBufferRemoval;
@@ -1233,13 +1284,23 @@ int Surface::connect(
         mDirtyRegion = Region::INVALID_REGION;
     }
 
+#ifdef MTK_AFPSGO_FBT_GAME
+    uint64_t buffID = 0;
+    mGraphicBufferProducer->getUniqueId(&buffID);
+    notifyFbc(FBC_CNT, buffID, api);
+#endif
+
     return err;
 }
 
 
 int Surface::disconnect(int api, IGraphicBufferProducer::DisconnectMode mode) {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    ALOGD("Surface::disconnect(this=%p,api=%d)", this, api);
+#else
     ALOGV("Surface::disconnect");
+#endif
     Mutex::Autolock lock(mMutex);
     mRemovedBuffers.clear();
     mSharedBufferSlot = BufferItem::INVALID_BUFFER_SLOT;
@@ -1260,6 +1321,13 @@ int Surface::disconnect(int api, IGraphicBufferProducer::DisconnectMode mode) {
             mConnectedToCpu = false;
         }
     }
+
+#ifdef MTK_AFPSGO_FBT_GAME
+    uint64_t buffID = 0;
+    mGraphicBufferProducer->getUniqueId(&buffID);
+    notifyFbc(FBC_DISCNT, buffID, api);
+#endif
+
     return err;
 }
 
@@ -1366,7 +1434,11 @@ int Surface::setCrop(Rect const* rect)
 int Surface::setBufferCount(int bufferCount)
 {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    ALOGD("Surface::setBufferCount(this=%p,bufferCount=%d)", this, bufferCount);
+#else
     ALOGV("Surface::setBufferCount");
+#endif
     Mutex::Autolock lock(mMutex);
 
     status_t err = NO_ERROR;
@@ -1446,7 +1518,11 @@ int Surface::setAutoRefresh(bool autoRefresh) {
 int Surface::setBuffersDimensions(uint32_t width, uint32_t height)
 {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    ALOGV("Surface::setBuffersDimensions(this=%p,w=%d,h=%d)", this, width, height);
+#else
     ALOGV("Surface::setBuffersDimensions");
+#endif
 
     if ((width && !height) || (!width && height))
         return BAD_VALUE;
@@ -1463,7 +1539,11 @@ int Surface::setBuffersDimensions(uint32_t width, uint32_t height)
 int Surface::setBuffersUserDimensions(uint32_t width, uint32_t height)
 {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    ALOGD("Surface::setBuffersUserDimensions(this=%p,w=%d,h=%d)", this, width, height);
+#else
     ALOGV("Surface::setBuffersUserDimensions");
+#endif
 
     if ((width && !height) || (!width && height))
         return BAD_VALUE;

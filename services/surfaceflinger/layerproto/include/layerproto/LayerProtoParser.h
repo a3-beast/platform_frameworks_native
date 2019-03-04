@@ -114,6 +114,9 @@ public:
         int32_t appId;
         int32_t hwcCompositionType;
         bool isProtected;
+#ifdef MTK_SF_DEBUG_SUPPORT
+        std::string bqcoreInfo;
+#endif
 
         std::string to_string() const;
     };

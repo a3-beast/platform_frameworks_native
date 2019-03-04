@@ -50,6 +50,7 @@ int LayerVector::do_compare(const void* lhs, const void* rhs) const
 
     int32_t lz = lState.z;
     int32_t rz = rState.z;
+
     if (lz != rz)
         return (lz > rz) ? 1 : -1;
 

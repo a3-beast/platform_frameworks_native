@@ -150,6 +150,14 @@ status_t BufferQueueConsumer::acquireBuffer(BufferItem* outBuffer,
                         desiredPresent, expectedPresent, mCore->mQueue.size());
 
                 if (!front->mIsStale) {
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+                    BQ_LOGI("acquireBuffer: slot %d is dropped, handle=%p",
+                        front->mSlot, mSlots[front->mSlot].mGraphicBuffer->handle);
+                    char ___traceBuf[128];
+                    snprintf(___traceBuf, sizeof(___traceBuf), "dropped:%d (h:%p)",
+                        front->mSlot, mSlots[front->mSlot].mGraphicBuffer->handle);
+                    android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);
+#endif
                     // Front buffer is still in mSlots, so mark the slot as free
                     mSlots[front->mSlot].mBufferState.freeQueued();
 
@@ -257,6 +265,25 @@ status_t BufferQueueConsumer::acquireBuffer(BufferItem* outBuffer,
         if (outBuffer->mAcquireCalled) {
             outBuffer->mGraphicBuffer = NULL;
         }
+
+#if defined(MTK_LIBGUI_DEBUG_SUPPORT) || defined(MTK_GEDKPI)
+        // 1. for dump, buffers holded by BufferQueueDump should be updated
+        // 2. to draw white debug line
+        if (!(sharedBufferAvailable && mCore->mQueue.empty())) {
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+            mCore->debugger.onAcquire(
+                slot,
+                front->mGraphicBuffer,
+                front->mFence,
+                front->mTimestamp,
+                front->mTransform,
+                outBuffer);
+#endif
+#ifdef MTK_GEDKPI
+            mCore->gedkpiDebugger.onAcquire(front->mGraphicBuffer);
+#endif
+        }
+#endif
 
         mCore->mQueue.erase(front);
 
@@ -462,6 +489,11 @@ status_t BufferQueueConsumer::releaseBuffer(int slot, uint64_t frameNumber,
 
         mCore->mDequeueCondition.broadcast();
         VALIDATE_CONSISTENCY();
+
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+        // for dump, buffers holded by BufferQueueDump should be updated
+        mCore->debugger.onRelease(slot);
+#endif
     } // Autolock scope
 
     // Call back without lock held
@@ -481,8 +513,13 @@ status_t BufferQueueConsumer::connect(
         return BAD_VALUE;
     }
 
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    // to set process's name and pid of consumer
+    mCore->debugger.onConsumerConnect(consumerListener, controlledByApp);
+#else
     BQ_LOGV("connect: controlledByApp=%s",
             controlledByApp ? "true" : "false");
+#endif
 
     Mutex::Autolock lock(mCore->mMutex);
 
@@ -500,7 +537,13 @@ status_t BufferQueueConsumer::connect(
 status_t BufferQueueConsumer::disconnect() {
     ATRACE_CALL();
 
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    // to reset pid of the consumer
+    mCore->debugger.onConsumerDisconnectHead();
+    BQ_LOGI("disconnect(C)");
+#else
     BQ_LOGV("disconnect");
+#endif
 
     Mutex::Autolock lock(mCore->mMutex);
 
@@ -515,6 +558,11 @@ status_t BufferQueueConsumer::disconnect() {
     mCore->freeAllBuffersLocked();
     mCore->mSharedBufferSlot = BufferQueueCore::INVALID_BUFFER_SLOT;
     mCore->mDequeueCondition.broadcast();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    // NOTE: this line must be placed after lock(mMutex)
+    // for dump, buffers holded by BufferQueueDump should be updated
+    mCore->debugger.onConsumerDisconnectTail();
+#endif
     return NO_ERROR;
 }
 
@@ -551,7 +599,11 @@ status_t BufferQueueConsumer::getReleasedBuffers(uint64_t *outSlotMask) {
         ++current;
     }
 
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    BQ_LOGD("getReleasedBuffers: returning mask %#" PRIx64, mask);
+#else
     BQ_LOGV("getReleasedBuffers: returning mask %#" PRIx64, mask);
+#endif
     *outSlotMask = mask;
     return NO_ERROR;
 }
@@ -566,7 +618,11 @@ status_t BufferQueueConsumer::setDefaultBufferSize(uint32_t width,
         return BAD_VALUE;
     }
 
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    BQ_LOGI("setDefaultBufferSize: width=%u height=%u", width, height);
+#else
     BQ_LOGV("setDefaultBufferSize: width=%u height=%u", width, height);
+#endif
 
     Mutex::Autolock lock(mCore->mMutex);
     mCore->mDefaultWidth = width;
@@ -686,6 +742,12 @@ status_t BufferQueueConsumer::setConsumerName(const String8& name) {
     Mutex::Autolock lock(mCore->mMutex);
     mCore->mConsumerName = name;
     mConsumerName = name;
+
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    // update dump info and prepare for drawing debug line
+    mCore->debugger.onSetConsumerName(name);
+#endif
+
     return NO_ERROR;
 }
 

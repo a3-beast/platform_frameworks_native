@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +42,12 @@ const String16 sAccessSurfaceFlinger("android.permission.ACCESS_SURFACE_FLINGER"
 Client::Client(const sp<SurfaceFlinger>& flinger)
     : Client(flinger, nullptr)
 {
+#ifdef MTK_SF_DEBUG_SUPPORT
+    // get client process info
+    mClientPid = IPCThreadState::self()->getCallingPid();
+    SurfaceFlinger::getProcessName(mClientPid, mClientProcName);
+    ALOGI("[SF client] NEW(%p) for (%d:%s)", this, mClientPid, mClientProcName.string());
+#endif
 }
 
 Client::Client(const sp<SurfaceFlinger>& flinger, const sp<Layer>& parentLayer)
@@ -47,6 +58,10 @@ Client::Client(const sp<SurfaceFlinger>& flinger, const sp<Layer>& parentLayer)
 
 Client::~Client()
 {
+#ifdef MTK_SF_DEBUG_SUPPORT
+    // log client process info, and the layers going to be removed
+    ALOGI("[SF client] Remove(%p) for (%d:%s)", this, mClientPid, mClientProcName.string());
+#endif
     // We need to post a message to remove our remaining layers rather than
     // do so directly by acquiring the SurfaceFlinger lock. If we were to
     // attempt to directly call the lock it becomes effectively impossible

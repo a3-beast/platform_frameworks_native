@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,6 +87,12 @@ private:
 
     // thread-safe
     mutable Mutex mLock;
+
+#ifdef MTK_SF_DEBUG_SUPPORT
+    // client process info
+    int32_t mClientPid;
+    String8 mClientProcName;
+#endif
 };
 
 // ---------------------------------------------------------------------------

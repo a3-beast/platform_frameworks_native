@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,7 +60,11 @@ namespace android {
 // Macros for including the GLConsumer name in log messages
 #define GLC_LOGV(x, ...) ALOGV("[%s] " x, mName.string(), ##__VA_ARGS__)
 #define GLC_LOGD(x, ...) ALOGD("[%s] " x, mName.string(), ##__VA_ARGS__)
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+#define GLC_LOGI(x, ...) ALOGI("[%s] " x, mName.string(), ##__VA_ARGS__)
+#else
 //#define GLC_LOGI(x, ...) ALOGI("[%s] " x, mName.string(), ##__VA_ARGS__)
+#endif
 #define GLC_LOGW(x, ...) ALOGW("[%s] " x, mName.string(), ##__VA_ARGS__)
 #define GLC_LOGE(x, ...) ALOGE("[%s] " x, mName.string(), ##__VA_ARGS__)
 
@@ -574,7 +583,11 @@ void GLConsumer::setReleaseFence(const sp<Fence>& fence) {
 
 status_t GLConsumer::detachFromContext() {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    GLC_LOGI("detachFromContext");
+#else
     GLC_LOGV("detachFromContext");
+#endif
     Mutex::Autolock lock(mMutex);
 
     if (mAbandoned) {
@@ -619,7 +632,11 @@ status_t GLConsumer::detachFromContext() {
 
 status_t GLConsumer::attachToContext(uint32_t tex) {
     ATRACE_CALL();
+#ifdef MTK_LIBGUI_DEBUG_SUPPORT
+    GLC_LOGI("attachToContext");
+#else
     GLC_LOGV("attachToContext");
+#endif
     Mutex::Autolock lock(mMutex);
 
     if (mAbandoned) {

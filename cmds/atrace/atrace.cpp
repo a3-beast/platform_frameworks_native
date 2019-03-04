@@ -200,7 +200,7 @@ static const TracingCategory k_categories[] = {
         { REQ,      "events/vmscan/mm_vmscan_direct_reclaim_end/enable" },
         { REQ,      "events/vmscan/mm_vmscan_kswapd_wake/enable" },
         { REQ,      "events/vmscan/mm_vmscan_kswapd_sleep/enable" },
-        { OPT,      "events/lowmemorykiller/enable" },
+        { REQ,      "events/lowmemorykiller/enable" },
     } },
     { "regulators",  "Voltage and Current Regulators", 0, {
         { REQ,      "events/regulator/enable" },
@@ -1156,6 +1156,8 @@ int main(int argc, char **argv)
             {"only_userspace",    no_argument, 0,  0 },
             {"list_categories",   no_argument, 0,  0 },
             {"stream",            no_argument, 0,  0 },
+            /// M: Support poke_services cmd in atrace
+            {"poke_services",     no_argument, 0,  0 },
             {           0,                  0, 0,  0 }
         };
 
@@ -1234,6 +1236,12 @@ int main(int argc, char **argv)
                 } else if (!strcmp(long_options[option_index].name, "list_categories")) {
                     listSupportedCategories();
                     exit(0);
+                /// M: Support poke_services cmd in atrace @{
+                } else if (!strcmp(long_options[option_index].name, "poke_services")) {
+                    pokeBinderServices();
+                    pokeHalServices();
+                    exit(0);
+                /// M: @}
                 }
             break;
 

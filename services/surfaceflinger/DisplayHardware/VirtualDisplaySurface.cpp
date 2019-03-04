@@ -208,6 +208,14 @@ status_t VirtualDisplaySurface::advanceFrame() {
     VDS_LOGV("advanceFrame: fb=%d(%p) out=%d(%p)",
             mFbProducerSlot, fbBuffer.get(),
             mOutputProducerSlot, outBuffer.get());
+			
+    if (outBuffer == NULL)
+    {
+        VDS_LOGE("advanceFrame get null buffer: fb=%d(%p) out=%d",
+                mFbProducerSlot, fbBuffer.get(),
+                mOutputProducerSlot);
+        return NO_MEMORY;
+    }
 
     // At this point we know the output buffer acquire fence,
     // so update HWC state with it.
@@ -423,6 +431,10 @@ status_t VirtualDisplaySurface::dequeueBuffer(int* pslot, sp<Fence>* fence, uint
     }
     if (outBufferAge) {
         *outBufferAge = 0;
+    }
+    if (!mForceHwcCopy)
+    {
+        result |= BUFFER_NEEDS_REALLOCATION;
     }
     return result;
 }

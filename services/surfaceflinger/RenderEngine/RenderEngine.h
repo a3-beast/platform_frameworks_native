@@ -113,6 +113,7 @@ public:
     virtual void setupFillWithColor(float r, float g, float b, float a) = 0;
 
     virtual void setupColorTransform(const mat4& /* colorTransform */) = 0;
+    virtual void setSaturationMatrix(const mat4& /* saturationMatrix */) = 0;
 
     virtual void disableTexturing() = 0;
     virtual void disableBlending() = 0;
@@ -130,6 +131,8 @@ public:
     virtual size_t getMaxTextureSize() const = 0;
     virtual size_t getMaxViewportDims() const = 0;
 };
+
+    const char* GetEGLVendorName();
 
 class BindNativeBufferAsFramebuffer {
 public:
@@ -227,6 +230,7 @@ public:
     void checkErrors() const override;
 
     void setupColorTransform(const mat4& /* colorTransform */) override {}
+    void setSaturationMatrix(const mat4& /* saturationMatrix */) override {}
 
     // internal to RenderEngine
     EGLDisplay getEGLDisplay() const;

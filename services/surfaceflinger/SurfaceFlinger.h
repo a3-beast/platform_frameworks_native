@@ -429,7 +429,6 @@ private:
                                    const Rect& sourceCrop, float frameScale, bool childrenOnly);
     virtual status_t getDisplayStats(const sp<IBinder>& display,
             DisplayStatInfo* stats);
-    virtual status_t getDisplayViewport(const sp<IBinder>& display, Rect* outViewport);
     virtual status_t getDisplayConfigs(const sp<IBinder>& display,
             Vector<DisplayInfo>* configs);
     virtual int getActiveConfig(const sp<IBinder>& display);
@@ -538,6 +537,10 @@ private:
             sp<Layer>* outLayer);
 
     status_t createColorLayer(const sp<Client>& client, const String8& name,
+            uint32_t w, uint32_t h, uint32_t flags, sp<IBinder>* outHandle,
+            sp<Layer>* outLayer);
+			
+    status_t createContainerLayer(const sp<Client>& client, const String8& name,
             uint32_t w, uint32_t h, uint32_t flags, sp<IBinder>* outHandle,
             sp<Layer>* outLayer);
 
@@ -813,13 +816,6 @@ private:
     sp<Fence> mPreviousPresentFence = Fence::NO_FENCE;
     bool mHadClientComposition = false;
 
-    enum class BootStage {
-        BOOTLOADER,
-        BOOTANIMATION,
-        FINISHED,
-    };
-    BootStage mBootStage;
-
     struct HotplugEvent {
         hwc2_display_t display;
         HWC2::Connection connection = HWC2::Connection::Invalid;
@@ -840,6 +836,7 @@ private:
     nsecs_t mLastSwapBufferTime;
     volatile nsecs_t mDebugInTransaction;
     nsecs_t mLastTransactionTime;
+    bool mBootFinished;
     bool mForceFullDamage;
     bool mPropagateBackpressure = true;
     std::unique_ptr<SurfaceInterceptor> mInterceptor =
@@ -896,9 +893,9 @@ private:
     static bool useVrFlinger;
     std::thread::id mMainThreadId;
 
-    DisplayColorSetting mDisplayColorSetting = DisplayColorSetting::ENHANCED;
-    // Applied on Display P3 layers when the render intent is non-colorimetric.
-    mat4 mEnhancedSaturationMatrix;
+    DisplayColorSetting mDisplayColorSetting = DisplayColorSetting::MANAGED;
+    // Applied on sRGB layers when the render intent is non-colorimetric.
+    mat4 mLegacySrgbSaturationMatrix;
 
     using CreateBufferQueueFunction =
             std::function<void(sp<IGraphicBufferProducer>* /* outProducer */,
@@ -911,6 +908,7 @@ private:
     CreateNativeWindowSurfaceFunction mCreateNativeWindowSurface;
 
     SurfaceFlingerBE mBE;
+
 };
 }; // namespace android
 

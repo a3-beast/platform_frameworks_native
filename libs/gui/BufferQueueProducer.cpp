@@ -41,6 +41,8 @@
 
 #include <system/window.h>
 
+#include <gui/mediatek/DispDeJitterHelper.h>
+
 namespace android {
 
 static constexpr uint32_t BQ_LAYER_COUNT = 1;
@@ -58,7 +60,9 @@ BufferQueueProducer::BufferQueueProducer(const sp<BufferQueueCore>& core,
     mNextCallbackTicket(0),
     mCurrentCallbackTicket(0),
     mCallbackCondition(),
-    mDequeueTimeout(-1) {}
+    mDequeueTimeout(-1) {
+    DispDeJitterHelper::getInstance();
+    }
 
 BufferQueueProducer::~BufferQueueProducer() {}
 
@@ -381,6 +385,7 @@ status_t BufferQueueProducer::dequeueBuffer(int* outSlot, sp<android::Fence>* ou
 
     { // Autolock scope
         Mutex::Autolock lock(mCore->mMutex);
+        mCore->waitWhileAllocatingLocked();
 
         if (format == 0) {
             format = mCore->mDefaultBufferFormat;
@@ -948,6 +953,9 @@ status_t BufferQueueProducer::queueBuffer(int slot,
         callbackTicket = mNextCallbackTicket++;
 
         VALIDATE_CONSISTENCY();
+		
+        DispDeJitterHelper::getInstance().markTimestamp(mSlots[slot].mGraphicBuffer);
+
     } // Autolock scope
 
     // It is okay not to clear the GraphicBuffer when the consumer is SurfaceFlinger because
@@ -1344,9 +1352,7 @@ void BufferQueueProducer::allocateBuffers(uint32_t width, uint32_t height,
                 return;
             }
 
-            // Only allocate one buffer at a time to reduce risks of overlapping an allocation from
-            // both allocateBuffers and dequeueBuffer.
-            newBufferCount = mCore->mFreeSlots.empty() ? 0 : 1;
+            newBufferCount = mCore->mFreeSlots.size();
             if (newBufferCount == 0) {
                 return;
             }

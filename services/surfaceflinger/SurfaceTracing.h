@@ -18,9 +18,6 @@
 
 #include <layerproto/LayerProtoHeader.h>
 #include <utils/Errors.h>
-#include <utils/String8.h>
-
-#include <memory>
 #include <mutex>
 
 using namespace android::surfaceflinger;
@@ -34,10 +31,9 @@ class SurfaceTracing {
 public:
     void enable();
     status_t disable();
-    bool isEnabled() const;
+    bool isEnabled();
 
     void traceLayers(const char* where, LayersProto);
-    void dump(String8& result) const;
 
 private:
     static constexpr auto DEFAULT_FILENAME = "/data/misc/wmtrace/layers_trace.pb";
@@ -46,8 +42,8 @@ private:
 
     bool mEnabled = false;
     std::string mOutputFileName = DEFAULT_FILENAME;
-    mutable std::mutex mTraceMutex;
-    std::unique_ptr<LayersTraceFileProto> mTrace;
+    std::mutex mTraceMutex;
+    LayersTraceFileProto mTrace;
 };
 
 } // namespace android

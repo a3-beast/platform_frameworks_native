@@ -184,12 +184,12 @@ int main(int argc, char* const argv[])
     if (sm == NULL) {
         ALOGW("Unable to get default service manager!");
         aerr << "cmd: Unable to get default service manager!" << endl;
-        return 20;
+        _exit(20);
     }
 
     if (argc == 1) {
         aerr << "cmd: No service specified; use -l to list all services" << endl;
-        return 20;
+        _exit(20);
     }
 
     if ((argc == 2) && (strcmp(argv[1], "-l") == 0)) {
@@ -203,7 +203,7 @@ int main(int argc, char* const argv[])
                 aout << "  " << services[i] << endl;
             }
         }
-        return 0;
+        _exit(0);
     }
 
     Vector<String16> args;
@@ -215,7 +215,7 @@ int main(int argc, char* const argv[])
     if (service == NULL) {
         ALOGW("Can't find service %s", argv[1]);
         aerr << "cmd: Can't find service: " << argv[1] << endl;
-        return 20;
+        _exit(20);
     }
 
     sp<MyShellCallback> cb = new MyShellCallback();
@@ -241,7 +241,7 @@ int main(int argc, char* const argv[])
         ALOGW("Failure calling service %s: %s (%d)", argv[1], errstr, -err);
         aout << "cmd: Failure calling service " << argv[1] << ": " << errstr << " ("
                 << (-err) << ")" << endl;
-        return err;
+        _exit(err);
     }
 
     cb->mActive = false;

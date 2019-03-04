@@ -116,6 +116,7 @@ cc_library_shared {
         "SurfaceControl.cpp",
         "SurfaceComposerClient.cpp",
         "SyncFeatures.cpp",
+        "mediatek/DispDeJitterHelper.cpp",
         "view/Surface.cpp",
         "bufferqueue/1.0/B2HProducerListener.cpp",
         "bufferqueue/1.0/H2BGraphicBufferProducer.cpp"

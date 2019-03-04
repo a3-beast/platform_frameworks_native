@@ -48,6 +48,8 @@
 #include <stdlib.h>
 #include <mutex>
 
+#include <gui/mediatek/DispDeJitterHelper.h>
+
 namespace android {
 
 BufferLayer::BufferLayer(SurfaceFlinger* flinger, const sp<Client>& client, const String8& name,
@@ -281,7 +283,9 @@ bool BufferLayer::shouldPresentNow(const DispSync& dispSync) const {
              mName.string(), timestamp, expectedPresent);
 
     bool isDue = timestamp < expectedPresent;
-    return isDue || !isPlausible;
+
+    return DispDeJitterHelper::getInstance().shouldDelayPresent(mDispDeJitter,
+            mQueueItems[0].mGraphicBuffer, expectedPresent, isDue, isPlausible);
 }
 
 void BufferLayer::setTransformHint(uint32_t orientation) const {
